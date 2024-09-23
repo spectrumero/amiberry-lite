@@ -332,9 +332,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "
             src/jit/compemu_fpp.cpp
             src/jit/compemu_support.cpp
     )
-endif ()
-
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
     target_compile_definitions(${PROJECT_NAME} PRIVATE CPU_arm ARMV6_ASSEMBLY ARMV6T2 USE_ARMNEON ARM_HAS_DIV)
     target_sources(${PROJECT_NAME} PRIVATE
             src/osdep/neon_helper.s
