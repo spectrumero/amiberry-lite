@@ -16,90 +16,6 @@ on:
 
 jobs:
 
-  build-macOS-x86_64:
-    runs-on: macos-13
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-        with:
-          submodules: 'true'
-
-      - name: Fix homebrew in Github Runner
-        run: |
-          for f in $(find /usr/local/bin -type l -print); do \
-            (readlink $f | grep -q -s "/Library") && echo Removing "$f" && rm -f "$f"; \
-          done || exit 0
-          
-      - name: Install dependencies
-        run: |
-          brew update
-          brew upgrade
-          brew install sdl2 mpg123 sdl2_ttf sdl2_image flac libmpeg2 libserialport portmidi dylibbundler
-
-      - name: make for macOS X64
-        run: make -j4 PLATFORM=osx-x86
-
-      - name: ZIP binaries
-        if: github.ref_type != 'tag'
-        run: zip -r amiberry-macOS-x86_64.zip Amiberry.app
-
-      - name: Upload artifact
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiberry-macOS-64bit-intel
-          path: amiberry-macOS-x86_64.zip
-
-      - name: ZIP binaries
-        if: github.ref_type == 'tag'
-        run: zip -r amiberry-${{ github.ref_name }}-macOS-x86_64.zip Amiberry.app
-
-      - name: Upload artifact
-        if: github.ref_type == 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiberry-macOS-64bit-intel
-          path: amiberry-${{ github.ref_name }}-macOS-x86_64.zip
-
-  build-macOS-Apple-Silicon:
-    runs-on: macos-latest
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-        with:
-          submodules: 'true'
-
-      - name: Install dependencies
-        run: |
-          brew update
-          brew upgrade
-          brew install sdl2 mpg123 sdl2_ttf sdl2_image flac libmpeg2 libserialport portmidi dylibbundler
-
-      - name: make for macOS Apple Silicon
-        run: make -j4 PLATFORM=osx-m1
-
-      - name: ZIP binaries
-        if: github.ref_type != 'tag'
-        run: zip -r amiberry-macOS-apple-silicon.zip Amiberry.app
-        
-      - name: Upload artifact
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiberry-macOS-64bit-apple-silicon
-          path: amiberry-macOS-apple-silicon.zip
-
-      - name: ZIP binaries
-        if: github.ref_type == 'tag'
-        run: zip -r amiberry-${{ github.ref_name }}-macOS-apple-silicon.zip Amiberry.app
-
-      - name: Upload artifact
-        if: github.ref_type == 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiberry-macOS-64bit-apple-silicon
-          path: amiberry-${{ github.ref_name }}-macOS-apple-silicon.zip
-
   build-debian-bullseye-x86_64:
     runs-on: ubuntu-latest
     steps:
@@ -117,7 +33,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: amiberry-debian-bullseye-x86_64
+        name: amiberry-lite-debian-bullseye-x86_64
         path: amiberry-lite_*.deb
 
   build-debian-bookworm-x86_64:
@@ -137,7 +53,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: amiberry-debian-bookworm-x86_64
+        name: amiberry-lite-debian-bookworm-x86_64
         path: amiberry-lite_*.deb
 
   build-debian-bookworm-aarch64:
@@ -157,7 +73,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: amiberry-debian-bookworm-aarch64
+        name: amiberry-lite-debian-bookworm-aarch64
         path: amiberry-lite_*.deb
 
   build-debian-bookworm-armhf:
@@ -177,7 +93,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: amiberry-debian-bookworm-armhf
+        name: amiberry-lite-debian-bookworm-armhf
         path: amiberry-lite_*.deb
 
   build-debian-bullseye-aarch64:
@@ -197,7 +113,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: amiberry-debian-bullseye-aarch64
+        name: amiberry-lite-debian-bullseye-aarch64
         path: amiberry-lite_*.deb
 
   build-debian-bullseye-armhf:
@@ -217,11 +133,11 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: amiberry-debian-bullseye-armhf
+        name: amiberry-lite-debian-bullseye-armhf
         path: amiberry-lite_*.deb
 
   create-release:
-    needs: [build-macOS-x86_64, build-macOS-apple-silicon, build-debian-bookworm-x86_64, build-debian-bookworm-aarch64, build-debian-bookworm-armhf, build-debian-bullseye-x86_64, build-debian-bullseye-aarch64, build-debian-bullseye-armhf]
+    needs: [build-debian-bookworm-x86_64, build-debian-bookworm-aarch64, build-debian-bookworm-armhf, build-debian-bullseye-x86_64, build-debian-bullseye-aarch64, build-debian-bullseye-armhf]
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     steps:
@@ -246,17 +162,15 @@ jobs:
           omitBodyDuringUpdate: true
           body: ${{ steps.changelog.outputs.changes }}
           artifacts: |
-            amiberry-macOS-64bit-intel/amiberry-${{ github.ref_name }}-macOS-x86_64.zip
-            amiberry-macOS-64bit-apple-silicon/amiberry-${{ github.ref_name }}-macOS-apple-silicon.zip
-            amiberry-debian-bookworm-x86_64/amiberry-lite_*.deb
-            amiberry-debian-bookworm-aarch64/amiberry-lite_*.deb
-            amiberry-debian-bookworm-armhf/amiberry-lite_*.deb
-            amiberry-debian-bullseye-x86_64/amiberry-lite_*.deb
-            amiberry-debian-bullseye-aarch64/amiberry-lite_*.deb
-            amiberry-debian-bullseye-armhf/amiberry-lite_*.deb
+            amiberry-lite-debian-bookworm-x86_64/amiberry-lite_*.deb
+            amiberry-lite-debian-bookworm-aarch64/amiberry-lite_*.deb
+            amiberry-lite-debian-bookworm-armhf/amiberry-lite_*.deb
+            amiberry-lite-debian-bullseye-x86_64/amiberry-lite_*.deb
+            amiberry-lite-debian-bullseye-aarch64/amiberry-lite_*.deb
+            amiberry-lite-debian-bullseye-armhf/amiberry-lite_*.deb
 
   create-prerelease:
-    needs: [build-macOS-x86_64, build-macOS-apple-silicon, build-debian-bookworm-x86_64, build-debian-bookworm-aarch64, build-debian-bookworm-armhf, build-debian-bullseye-x86_64, build-debian-bullseye-aarch64, build-debian-bullseye-armhf]
+    needs: [build-debian-bookworm-x86_64, build-debian-bookworm-aarch64, build-debian-bookworm-armhf, build-debian-bullseye-x86_64, build-debian-bullseye-aarch64, build-debian-bullseye-armhf]
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'preview-v')
     steps:
@@ -282,11 +196,9 @@ jobs:
           omitBodyDuringUpdate: true
           body: ${{ steps.changelog.outputs.changes }}
           artifacts: |
-            amiberry-macOS-64bit-intel/amiberry-${{ github.ref_name }}-macOS-x86_64.zip
-            amiberry-macOS-64bit-apple-silicon/amiberry-${{ github.ref_name }}-macOS-apple-silicon.zip
-            amiberry-debian-bookworm-x86_64/amiberry-lite_*.deb
-            amiberry-debian-bookworm-aarch64/amiberry-lite_*.deb
-            amiberry-debian-bookworm-armhf/amiberry-lite_*.deb
-            amiberry-debian-bullseye-x86_64/amiberry-lite_*.deb
-            amiberry-debian-bullseye-aarch64/amiberry-lite_*.deb
-            amiberry-debian-bullseye-armhf/amiberry-lite_*.deb
+            amiberry-lite-debian-bookworm-x86_64/amiberry-lite_*.deb
+            amiberry-lite-debian-bookworm-aarch64/amiberry-lite_*.deb
+            amiberry-lite-debian-bookworm-armhf/amiberry-lite_*.deb
+            amiberry-lite-debian-bullseye-x86_64/amiberry-lite_*.deb
+            amiberry-lite-debian-bullseye-aarch64/amiberry-lite_*.deb
+            amiberry-lite-debian-bullseye-armhf/amiberry-lite_*.deb
