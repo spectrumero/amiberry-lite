@@ -9,7 +9,7 @@ set(CMAKE_C_FLAGS_DEBUG "-Og -g -funwind-tables -DDEBUG -pipe -fno-pie -no-pie")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_ASM_COMPILER "${CMAKE_C_COMPILER}")
-set(CMAKE_ASM_COMPILER_ARG1 "-mfpu=neon-fp-armv8")
+set(CMAKE_ASM_COMPILER_ARG1 "${CMAKE_C_COMPILER_ARG1}")
 
 # Use libgpiod to control GPIO LEDs?
 option(USE_GPIOD "Use GPIOD" OFF)
@@ -333,6 +333,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "
             src/jit/compemu_support.cpp
     )
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+    set(CMAKE_ASM_COMPILER_ARG1 "-mfpu=neon-fp-armv8")
     target_compile_definitions(${PROJECT_NAME} PRIVATE CPU_arm ARMV6_ASSEMBLY ARMV6T2 USE_ARMNEON ARM_HAS_DIV)
     target_sources(${PROJECT_NAME} PRIVATE
             src/osdep/neon_helper.s
