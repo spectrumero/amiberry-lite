@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(amiberry)
+project(amiberry-lite VERSION 5.7.5)
 enable_language(C CXX ASM)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_C_FLAGS_RELEASE "-O3 -pipe")
-set(CMAKE_C_FLAGS_DEBUG "-Og -g -rdynamic -funwind-tables -DDEBUG -Wl,--export-dynamic -pipe")
+set(CMAKE_C_FLAGS_RELEASE "-O3 -pipe -fno-pie -no-pie")
+set(CMAKE_C_FLAGS_DEBUG "-Og -g -funwind-tables -DDEBUG -pipe -fno-pie -no-pie")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_ASM_COMPILER "${CMAKE_C_COMPILER}")
@@ -33,38 +33,20 @@ endif ()
 # Needed so that cmake uses our find modules.
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-include(CheckSymbolExists)
-function(detect_architecture symbol arch)
-    if (NOT DEFINED ARCHITECTURE)
-        set(CMAKE_REQUIRED_QUIET 1)
-        check_symbol_exists("${symbol}" "" ARCHITECTURE_${arch})
-        unset(CMAKE_REQUIRED_QUIET)
-
-        # The output variable needs to be unique across invocations otherwise
-        # CMake's crazy scope rules will keep it defined
-        if (ARCHITECTURE_${arch})
-            set(ARCHITECTURE "${arch}" PARENT_SCOPE)
-        endif ()
-    endif ()
-endfunction()
-
-detect_architecture("__x86_64__" x86_64)
-detect_architecture("__aarch64__" arm64)
-detect_architecture("__arm__" arm32)
-
-message(STATUS "Target architecture: ${ARCHITECTURE}")
-
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(MACOS TRUE)
     message(STATUS "macOS platform detected")
-    if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR ARCHITECTURE MATCHES "arm64")
-        set(CMAKE_EXE_LINKER_FLAGS "-L/usr/local/lib external/libguisan/dylib/libguisan.dylib -L/opt/homebrew/lib/ -framework IOKit -framework Foundation")
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
+        include_directories("/opt/homebrew/include")
+        set(CMAKE_EXE_LINKER_FLAGS "-L/opt/homebrew/lib -framework IOKit -framework Foundation -liconv")
     else ()
-        set(CMAKE_EXE_LINKER_FLAGS "-L/usr/local/lib external/libguisan/dylib/libguisan.dylib -framework IOKit -framework Foundation")
+        include_directories("/usr/local/include")
+        set(CMAKE_EXE_LINKER_FLAGS "-L/usr/local/lib -framework IOKit -framework Foundation -liconv")
     endif ()
 endif ()
 
-add_executable(${PROJECT_NAME}
+# Define the list of source files
+set(SOURCE_FILES
         src/a2065.cpp
         src/a2091.cpp
         src/akiko.cpp
@@ -329,10 +311,19 @@ add_executable(${PROJECT_NAME}
         src/cpuemu_44.cpp
 )
 
-target_compile_options(${PROJECT_NAME} PRIVATE -fno-pie)
+if (APPLE)
+    add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES})
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/Info.plist
+    )
+else ()
+    add_executable(${PROJECT_NAME} ${SOURCE_FILES})
+endif()
+
 target_compile_definitions(${PROJECT_NAME} PRIVATE _FILE_OFFSET_BITS=64)
 
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR ARCHITECTURE MATCHES "arm64")
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
     target_compile_definitions(${PROJECT_NAME} PRIVATE CPU_AARCH64)
     target_sources(${PROJECT_NAME} PRIVATE
             src/osdep/aarch64_helper.s
@@ -343,7 +334,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR ARCHITECTURE MATCHES "arm64")
     )
 endif ()
 
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm" OR ARCHITECTURE MATCHES "arm32")
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
     target_compile_definitions(${PROJECT_NAME} PRIVATE CPU_arm ARMV6_ASSEMBLY ARMV6T2 USE_ARMNEON ARM_HAS_DIV)
     target_sources(${PROJECT_NAME} PRIVATE
             src/osdep/neon_helper.s
@@ -354,9 +345,10 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm" OR ARCHITECTURE MATCHES "arm32")
     )
 endif ()
 
-find_package(SDL2 REQUIRED CONFIG REQUIRED COMPONENTS SDL2)
-find_package(SDL2_image REQUIRED)
-find_package(SDL2_ttf REQUIRED)
+find_package(SDL2 CONFIG REQUIRED)
+find_package(SDL2_image MODULE REQUIRED)
+find_package(SDL2_ttf MODULE REQUIRED)
+include_directories(${SDL2_INCLUDE_DIR} ${SDL2_IMAGE_INCLUDE_DIR} ${SDL2_TTF_INCLUDE_DIR})
 
 if (USE_GPIOD)
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_GPIOD)
@@ -389,9 +381,8 @@ add_subdirectory(external/libguisan)
 # Add dependencies to ensure external libraries are built
 add_dependencies(${PROJECT_NAME} mt32emu floppybridge capsimage guisan)
 
-target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS} src src/osdep src/include src/threaddep src/archivers external/libguisan/include external/mt32emu/src external/floppybridge/src)
-target_link_libraries(${PROJECT_NAME} PRIVATE SDL2 SDL2_image SDL2_ttf guisan mt32emu ${DBUS_LIBRARIES} FLAC portmidi png mpg123 mpeg2convert mpeg2 serialport z)
-target_link_options(${PROJECT_NAME} PRIVATE "LINKER:-as-needed,-no-pie")
+target_include_directories(${PROJECT_NAME} PRIVATE src src/osdep src/include src/threaddep src/archivers src/ppc/pearpc external/libguisan/include external/mt32emu/src external/floppybridge/src)
+target_link_libraries(${PROJECT_NAME} PRIVATE SDL2 SDL2_image SDL2_ttf guisan mt32emu ${DBUS_LIBRARIES} FLAC portmidi png MPG123::libmpg123 mpeg2convert mpeg2 serialport z pthread dl)
 
 if (USE_OPENGL)
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENGL)
@@ -453,58 +444,93 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         DEPENDS external/capsimage)
 
 # Install the executable
-install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
+if (APPLE)
+    install(TARGETS ${PROJECT_NAME} BUNDLE DESTINATION .)
+else ()
+    install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
+    # Install additional directories
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/cdroms
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/conf
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/controllers
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/data
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/floppies
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/harddrives
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/inputrecordings
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/kickstarts
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/lha
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/nvram
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/plugins
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/savestates
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/screenshots
+        DESTINATION share/${PROJECT_NAME}
+    )
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/whdboot
+        DESTINATION share/${PROJECT_NAME}
+    )
 
-# Install additional directories
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/cdroms
-    DESTINATION share/${PROJECT_NAME}/cdroms
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/conf
-    DESTINATION share/${PROJECT_NAME}/conf
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/controllers
-    DESTINATION share/${PROJECT_NAME}/controllers
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/data
-    DESTINATION share/${PROJECT_NAME}/data
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/floppies
-    DESTINATION share/${PROJECT_NAME}/floppies
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/harddrives
-    DESTINATION share/${PROJECT_NAME}/harddrives
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/inputrecordings
-    DESTINATION share/${PROJECT_NAME}/inputrecordings
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/kickstarts
-    DESTINATION share/${PROJECT_NAME}/kickstarts
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/lha
-    DESTINATION share/${PROJECT_NAME}/lha
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/nvram
-    DESTINATION share/${PROJECT_NAME}/nvram
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/plugins
-    DESTINATION share/${PROJECT_NAME}/plugins
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/savestates
-    DESTINATION share/${PROJECT_NAME}/savestates
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/screenshots
-    DESTINATION share/${PROJECT_NAME}/screenshots
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/whdboot
-    DESTINATION share/${PROJECT_NAME}/whdboot
-)
+    # Install shared libraries
+    install(FILES ${CMAKE_BINARY_DIR}/external/floppybridge/libfloppybridge.so
+        DESTINATION share/${PROJECT_NAME}/plugins
+    )
+    install(FILES ${CMAKE_BINARY_DIR}/external/capsimage/libcapsimage.so
+        DESTINATION share/${PROJECT_NAME}/plugins
+    )
 
-# Install shared libraries
-install(FILES ${CMAKE_BINARY_DIR}/external/floppybridge/libfloppybridge.so
-    DESTINATION share/${PROJECT_NAME}/plugins
-)
-install(FILES ${CMAKE_BINARY_DIR}/external/capsimage/libcapsimage.so
-    DESTINATION share/${PROJECT_NAME}/plugins
-)
+    # Install desktop file
+    install(FILES ${CMAKE_SOURCE_DIR}/data/Amiberry.desktop
+        DESTINATION share/applications
+    )
+endif ()
+
+include(InstallRequiredSystemLibraries)
+
+if(APPLE)
+    set(CPACK_GENERATOR "Bundle")
+    set(CPACK_BUNDLE_NAME "Amiberry")
+    set(CPACK_BUNDLE_PLIST ${CMAKE_SOURCE_DIR}/Info.plist)
+    set(CPACK_BUNDLE_APPLE_ENTITLEMENTS ${CMAKE_SOURCE_DIR}/Entitlements.plist)
+    set(CPACK_BUNDLE_ICON ${CMAKE_SOURCE_DIR}/data/amiberry.png)
+else()
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_SOURCE_IGNORE_FILES .git/ .github/ .vscode/ _CPack_Packages/)
+    SET(CPACK_PACKAGE_NAME ${CMAKE_PROJECT_NAME})
+    SET(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+    SET(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+    SET(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+    SET(CPACK_PACKAGE_VENDOR "BlitterStudio")
+    SET(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+    SET(CPACK_RESOURCE_FILE_README "${CMAKE_SOURCE_DIR}/docs/README.md")
+    SET(CPACK_DEBIAN_PACKAGE_NAME ${CMAKE_PROJECT_NAME})
+    set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://amiberry.com")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Dimitris Panokostas <midwan@gmail.com>") # Required
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.27), libstdc++6 (>= 8.3.0), libsdl2-2.0-0, libsdl2-image-2.0-0, libsdl2-ttf-2.0-0, flac, libmpg123-0, libpng16-16, zlib1g, libserialport0, libportmidi0, libmpeg2-4") # Adjust dependencies as needed
+    set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Amiberry-Lite is an optimized Amiga emulator various platforms.")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "games")
+    set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+endif()
 
 include(CPack)

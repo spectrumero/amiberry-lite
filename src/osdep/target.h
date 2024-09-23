@@ -9,7 +9,7 @@
 
 #include "options.h"
 
-#define TARGET_NAME _T("amiberry")
+#define TARGET_NAME _T("amiberry-lite")
 
 #define NO_MAIN_IN_MAIN_C
 
@@ -20,8 +20,8 @@
 #define GETBDM(x) (((x) - (((x) / 10000) * 10000)) / 100)
 #define GETBDD(x) ((x) % 100)
 
-#define AMIBERRYVERSION _T("Amiberry v5.7.4 (2024-09-01)")
-#define AMIBERRYDATE MAKEBD(2024, 9, 1)
+#define AMIBERRYVERSION _T("Amiberry-Lite v5.7.5 (2024-09-23)")
+#define AMIBERRYDATE MAKEBD(2024, 9, 23)
 #define COPYRIGHT _T("Copyright (C) 2016-2024 Dimitris Panokostas")
 
 #define IHF_WINDOWHIDDEN 6
