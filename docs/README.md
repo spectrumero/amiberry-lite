@@ -67,7 +67,7 @@ Or if you're using an Arch-based distro (e.g. Manjaro), the relevant package nam
 
       sudo pacman -S base-devel cmake sdl2 sdl2_ttf sdl2_image flac mpg123 libmpeg2 libserialport portmidi
 
-if you have an AUR helper like [yay](https://github.com/Jguer/yay), you can build and run [Amiberry-Lite](https://aur.archlinux.org/packages/amiberry) through:
+if you have an AUR helper like [yay](https://github.com/Jguer/yay), you can build and run [Amiberry-Lite](https://aur.archlinux.org/packages/amiberry-lite) through:
 
       yay -S amiberry-lite
 
