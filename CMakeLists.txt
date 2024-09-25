@@ -311,7 +311,7 @@ set(SOURCE_FILES
     src/cpuemu_44.cpp
 )
 
-if (APPLE)
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCE_FILES})
     set_target_properties(${PROJECT_NAME} PROPERTIES
         MACOSX_BUNDLE TRUE
@@ -443,7 +443,7 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         DEPENDS external/capsimage)
 
 # Install the executable
-if (APPLE)
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     install(TARGETS ${PROJECT_NAME} BUNDLE DESTINATION .)
 else ()
     install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
