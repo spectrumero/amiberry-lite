@@ -94,8 +94,8 @@ Alternatively, you can of course compile the latest version of Amiberry from sou
 ### First, clone this repository locally
 
       cd ~
-      git clone https://github.com/BlitterStudio/amiberry
-      cd amiberry
+      git clone https://github.com/BlitterStudio/amiberry-lite
+      cd amiberry-lite
 
 ### Then, choose a platform to compile for
 
