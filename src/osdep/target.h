@@ -9,7 +9,7 @@
 
 #include "options.h"
 
-#define TARGET_NAME _T("amiberry-lite")
+#define TARGET_NAME _T("amiberry")
 
 #define NO_MAIN_IN_MAIN_C
 
