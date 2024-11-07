@@ -760,29 +760,26 @@ static void close_kb()
 
 void release_keys(void)
 {
-	// only run this if SDL2 version is 2.24 or higher
-#if SDL_VERSION_ATLEAST(2,0,24)
-		SDL_ResetKeyboard();
-#else
+	// Special handling in case Alt-Tab was still stuck in pressed state
+	if (currprefs.alt_tab_release && key_altpressed())
 	{
-		const Uint8* state = SDL_GetKeyboardState(NULL);
-		SDL_Event event;
-
-		for (int i = 0; i < SDL_NUM_SCANCODES; ++i) {
-			if (state[i]) {
-				event.type = SDL_KEYUP;
-				event.key.keysym.scancode = (SDL_Scancode)i;
-				event.key.keysym.sym = SDL_GetKeyFromScancode((SDL_Scancode)i);
-				event.key.keysym.mod = 0;
-				event.key.state = SDL_RELEASED;
-				SDL_PushEvent(&event);
-			}
-		}
+		my_kbd_handler(0, SDL_SCANCODE_LALT, 0, true);
+		my_kbd_handler(0, SDL_SCANCODE_TAB, 0, true);
 	}
-#endif
-	for (int j = 0; j < MAX_INPUT_DEVICES; j++) {
-		for (int i = 0; i < SDL_NUM_SCANCODES; i++) {
-			my_kbd_handler(j, i, 0, true);
+
+	const Uint8* state = SDL_GetKeyboardState(NULL);
+	SDL_Event event;
+
+	for (int i = 0; i < SDL_NUM_SCANCODES; ++i) {
+		if (state[i]) {
+			event.type = SDL_KEYUP;
+			event.key.keysym.scancode = (SDL_Scancode)i;
+			event.key.keysym.sym = SDL_GetKeyFromScancode((SDL_Scancode)i);
+			event.key.keysym.mod = 0;
+			event.key.state = SDL_RELEASED;
+			SDL_PushEvent(&event);
+
+			my_kbd_handler(0, i, 0, true);
 		}
 	}
 }
@@ -1048,10 +1045,9 @@ static int init_joystick()
 		num_joystick = MAX_INPUT_DEVICES;
 
 	// set up variables / paths etc.
-	char cfg[MAX_DPATH];
-	get_configuration_path(cfg, MAX_DPATH);
-	strcat(cfg, "gamecontrollerdb.txt");
-	SDL_GameControllerAddMappingsFromFile(cfg);
+	std::string cfg = get_controllers_path();
+	cfg += "gamecontrollerdb.txt";
+	SDL_GameControllerAddMappingsFromFile(cfg.c_str());
 
 	std::string controllers = get_controllers_path();
 	controllers.append("gamecontrollerdb_user.txt");
