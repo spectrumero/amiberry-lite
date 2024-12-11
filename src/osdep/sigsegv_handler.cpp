@@ -24,6 +24,9 @@
  *
  */
 
+#include <unistd.h>
+#include <fcntl.h>
+
 #include "sysconfig.h"
 #include "sysdeps.h"
 #include "options.h"
@@ -54,6 +57,7 @@ extern blockinfo* active;
 extern blockinfo* dormant;
 extern void invalidate_block(blockinfo* bi);
 extern void raise_in_cl_list(blockinfo* bi);
+static void dump_jit();
 #endif
   
 
@@ -348,8 +352,10 @@ void signal_segv(int signum, siginfo_t* info, void* ptr)
 		
 	ucontext_t* ucontext = (ucontext_t*)ptr;
 	Dl_info dlinfo;
-
-	output_log(_T("--- New exception ---\n"));
+#ifdef JIT
+	dump_jit();
+#endif
+	output_log(_T("--- New exception, signal_segv ---\n"));
 
 #ifdef TRACER
 	trace_end();
@@ -459,8 +465,10 @@ void signal_buserror(int signum, siginfo_t* info, void* ptr)
 {
 	ucontext_t* ucontext = (ucontext_t*)ptr;
 	Dl_info dlinfo;
-
-	output_log(_T("--- New exception ---\n"));
+#ifdef JIT
+	dump_jit();
+#endif
+	output_log(_T("--- New exception, signal_buserror ---\n"));
 
 #ifdef TRACER
 	trace_end();
@@ -749,8 +757,10 @@ void signal_segv(int signum, siginfo_t* info, void* ptr)
 	int handled = HANDLE_EXCEPTION_NONE;
 	ucontext_t* ucontext = (ucontext_t*)ptr;
 	Dl_info dlinfo;
-
-	output_log(_T("--- New exception ---\n"));
+#ifdef JIT
+	dump_jit();
+#endif
+	output_log(_T("--- New exception, signal_segv ---\n"));
 
 #ifdef TRACER
 	trace_end();
@@ -876,8 +886,10 @@ void signal_buserror(int signum, siginfo_t* info, void* ptr)
 {
 	ucontext_t* ucontext = (ucontext_t*)ptr;
 	Dl_info dlinfo;
-
-	output_log(_T("--- New exception ---\n"));
+#ifdef JIT
+	dump_jit();
+#endif
+	output_log(_T("--- New exception, signal_buserror ---\n"));
 
 #ifdef TRACER
 	trace_end();
@@ -984,3 +996,26 @@ void signal_term(int signum, siginfo_t* info, void* ptr)
 	SDL_Quit();
 	exit(1);
 }
+
+
+#ifdef JIT
+extern uae_u32 popallspace_size;
+static void dump_jit()
+{
+	output_log(_T("Dumping JIT memory at %x compiled_code = %x length %ld\n"), 
+				popallspace, compiled_code, popallspace_size);
+	if(popallspace != NULL) {
+		int fd = open("jitdump.bin", O_CREAT|O_WRONLY, 0644);
+		if(fd) {
+			uae_u8* ptr = popallspace;
+			for(int i = 0; i < popallspace_size; i += 1024) {
+				write(fd, ptr, 1024);
+				ptr += 1024;
+			}
+			close(fd);
+		}
+	}
+
+}
+#endif
+

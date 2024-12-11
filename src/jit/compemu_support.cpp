@@ -136,6 +136,7 @@ static uae_u8* max_compile_start;
 uae_u8* compiled_code = NULL;
 const int POPALLSPACE_SIZE = 2048; /* That should be enough space */
 uae_u8* popallspace = NULL;
+volatile uae_u32 popallspace_size;
 
 void* pushall_call_handler = NULL;
 static void* popall_execute_normal = NULL;
@@ -2032,6 +2033,7 @@ STATIC_INLINE void create_popalls(void)
              * anyway. */
             return;
         }
+	popallspace_size = POPALLSPACE_SIZE + MAX_JIT_CACHE * 1024;
     }
     write_log("JIT popallspace: %p-%p\n", popallspace, popallspace + POPALLSPACE_SIZE);
 
