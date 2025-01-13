@@ -168,7 +168,6 @@ jobs:
           body: ${{ steps.changelog.outputs.changes }}
           artifacts: |
             artifacts/amiberry-*.*
-            artifacts/Amiberry-*.*
 
   create-prerelease:
     needs: [build-debian-bookworm-arm64, build-debian-bookworm-armhf, build-debian-bullseye-arm64, build-debian-bullseye-armhf]
@@ -204,4 +203,3 @@ jobs:
           body: ${{ steps.changelog.outputs.changes }}
           artifacts: |
             artifacts/amiberry-*.*
-            artifacts/Amiberry-*.*
