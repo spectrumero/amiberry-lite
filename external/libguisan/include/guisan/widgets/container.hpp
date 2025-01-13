@@ -59,10 +59,10 @@
 
 #include <list>
 
-#include "guisan/basiccontainer.hpp"
 #include "guisan/containerlistener.hpp"
 #include "guisan/graphics.hpp"
 #include "guisan/platform.hpp"
+#include "guisan/widget.hpp"
 
 namespace gcn
 {
@@ -74,22 +74,22 @@ namespace gcn
      *
      * @see Gui::setTop
      */
-    class GCN_CORE_DECLSPEC Container: public BasicContainer
+    class GCN_CORE_DECLSPEC Container: public Widget
     {
     public:
 
         /**
-         * Constructor. A container is opauqe as default, if you want a
-         * none opaque container call setQpaque(false).
+         * Constructor. A container is opaque as default, if you want a
+         * non-opaque container call setOpaque(false).
          *
          * @see setOpaque, isOpaque
          */
-        Container();
+        Container() = default;
 
         /**
          * Destructor.
          */
-        virtual ~Container();
+        ~Container() override;
 
         /**
          * Sets the container to be opaque or not. If the container
@@ -103,7 +103,7 @@ namespace gcn
          * @param opaque True if the container should be opaque, false otherwise.
          * @see isOpaque
          */
-        void setOpaque(bool opaque);
+        virtual void setOpaque(bool opaque);
 
         /**
          * Checks if the container is opaque or not.
@@ -111,7 +111,7 @@ namespace gcn
          * @return True if the container is opaque, false otherwise.
          * @see setOpaque
          */
-        bool isOpaque() const;
+        [[nodiscard]] bool isOpaque() const;
 
         /**
          * Adds a widget to the container.
@@ -119,7 +119,7 @@ namespace gcn
          * @param widget The widget to add.
          * @see remove, clear
          */
-        virtual void add(Widget* widget);
+        void add(Widget* widget) override;
 
         /**
          * Adds a widget to the container and also specifies the widget's
@@ -141,24 +141,24 @@ namespace gcn
          *                   container.
          * @see add, clear
          */
-        virtual void remove(Widget* widget);
+        void remove(Widget* widget) override;
 
         /**
          * Clears the container of all widgets.
          *
          * @see add, remove
          */
-        virtual void clear();
+        void clear() override;
 
         /**
          * Finds a widget given an id.
          *
          * @param id The id to find a widget by.
-         * @return A widget with a corrosponding id, NULL if no widget 
+         * @return A widget with a corrosponding id, nullptr if no widget 
          *         is found.
          * @see Widget::setId
          */
-        virtual Widget* findWidgetById(const std::string &id);
+        Widget* findWidgetById(const std::string &id) override;
 
         /**
          * Adds a container listener to the container. When a widget is
@@ -183,17 +183,18 @@ namespace gcn
          *
          * @return The children of the container.
          */
-        const std::list<Widget*>& getChildren() const;
+        [[nodiscard]] const std::list<Widget*>& getChildren() const override;
 
         /**
          * Resizes the Container's size to fit te content exactly.
          */
-        void resizeToContent();
+        virtual void resizeToContent();
 
         // Inherited from Widget
 
-        virtual void draw(Graphics* graphics);
-
+        void draw(Graphics* graphics) override;
+        Rectangle getChildrenArea() override;
+        void drawChildren(Graphics* graphics);
 
     protected:
         /**
@@ -217,7 +218,7 @@ namespace gcn
         /**
          * True if the container is opaque, false otherwise.
          */
-        bool mOpaque;
+        bool mOpaque = true;
 
         typedef std::list<ContainerListener*> ContainerListenerList;
 

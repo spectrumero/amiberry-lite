@@ -38,21 +38,21 @@ BOOL debuggerinitializing = false;
 extern int lof_store;
 static int console_input_linemode = -1;
 int always_flush_log = 1;
-TCHAR* conlogfile = NULL;
+TCHAR* conlogfile = nullptr;
 
 #define WRITE_LOG_BUF_SIZE 4096
 
 /* console functions for debugger */
 
-bool is_console_open(void)
+bool is_console_open()
 {
 	return consoleopen;
 }
 
-static void getconsole(void)
+static void getconsole()
 {
-	struct termios term;
-	struct winsize ws;
+	struct termios term{};
+	struct winsize ws{};
 
 	// Get the terminal attributes
 	tcgetattr(STDIN_FILENO, &term);
@@ -75,14 +75,14 @@ static void getconsole(void)
 	}
 }
 
-void activate_console(void)
+void activate_console()
 {
 	if (!consoleopen)
 		return;
 	//SetForegroundWindow(GetConsoleWindow());
 }
 
-static void open_console_window(void)
+static void open_console_window()
 {
 	//AllocConsole();
 	getconsole();
@@ -90,7 +90,7 @@ static void open_console_window(void)
 	reopen_console();
 }
 
-static void openconsole (void)
+static void openconsole ()
 {
 	if (realconsole) {
 		if (debugger_type == 2) {
@@ -145,19 +145,19 @@ void debugger_change (int mode)
 	openconsole ();
 }
 
-void update_debug_info(void) {
+void update_debug_info() {
 	// used to update debug info in debugger UI , currently Amiberry only supports
 	// using console debugging on Linux/Mac OS X.
 }
 
-void open_console(void)
+void open_console()
 {
 	if (!consoleopen) {
 		openconsole();
 	}
 }
 
-void reopen_console (void)
+void reopen_console ()
 {
 #ifdef _WIN32
 	HWND hwnd;
@@ -198,7 +198,7 @@ void reopen_console (void)
 #endif
 }
 
-void close_console (void)
+void close_console ()
 {
 	if (realconsole)
 		return;
@@ -232,6 +232,14 @@ void close_console (void)
 
 #endif
 	consoleopen = 0;
+}
+
+int read_log()
+{
+	if (consoleopen >= 0)
+		return -1;
+	//TODO needs implementation
+	return -1;
 }
 
 static void writeconsole_2 (const TCHAR *buffer)
@@ -270,7 +278,7 @@ static void writeconsole (const TCHAR *buffer)
 	}
 }
 
-static void flushconsole(void)
+static void flushconsole()
 {
 	if (consoleopen > 0) {
 		fflush(stdout);
@@ -283,15 +291,15 @@ static void flushconsole(void)
 static TCHAR* console_buffer;
 static int console_buffer_size;
 
-TCHAR *setconsolemode (TCHAR *buffer, int maxlen)
+TCHAR *setconsolemode (TCHAR *buffer, const int maxlen)
 {
-	TCHAR *ret = NULL;
+	TCHAR *ret = nullptr;
 	if (buffer) {
 		console_buffer = buffer;
 		console_buffer_size = maxlen;
 	} else {
 		ret = console_buffer;
-		console_buffer = NULL;
+		console_buffer = nullptr;
 	}
 	return ret;
 }
@@ -322,7 +330,7 @@ void console_out(const TCHAR* txt)
 	console_put(txt);
 }
 
-bool console_isch (void)
+bool console_isch ()
 {
 #ifdef _WIN32
 	flushmsgpump();
@@ -341,7 +349,7 @@ bool console_isch (void)
 #endif
 }
 
-TCHAR console_getch(void)
+TCHAR console_getch()
 {
 	fflush(stdout);
 	if (console_buffer)
@@ -405,7 +413,7 @@ int console_get (TCHAR *out, int maxlen)
 	return 0;
 #else
 	TCHAR *res = fgets(out, maxlen, stdin);
-	if (res == NULL) {
+	if (res == nullptr) {
 		return -1;
 	}
 	int len = strlen(out);
@@ -431,11 +439,11 @@ TCHAR* write_log_get_ts(void)
 	char curts[100];
 
 	if (bootlogmode)
-		return NULL;
+		return nullptr;
 	if (nodatestamps)
-		return NULL;
+		return nullptr;
 	if (!vsync_counter)
-		return NULL;
+		return nullptr;
 
 	Uint32 ticks = SDL_GetTicks();
 	time_t seconds = ticks / 1000;
@@ -453,10 +461,10 @@ TCHAR* write_log_get_ts(void)
 	}
 	strftime(p, sizeof(out) - (p - out), "%S-", t);
 	p += strlen(p);
-	sprintf(p, "%03d", milliseconds);
+	_sntprintf(p, sizeof p, "%03d", milliseconds);
 	p += strlen(p);
 	if (vsync_counter != 0xffffffff)
-		sprintf(p, " [%d %03d%s%03d]", vsync_counter, current_hpos_safe(), lof_store ? "-" : "=", vpos);
+		_sntprintf(p, sizeof p, " [%d %03d%s%03d]", vsync_counter, current_hpos_safe(), lof_store ? "-" : "=", vpos);
 	strcat(p, ": ");
 	return out;
 }
@@ -514,7 +522,7 @@ void write_log(const char* format, ...)
 		flush_log();
 }
 
-void flush_log(void)
+void flush_log()
 {
 	if (debugfile)
 		fflush(debugfile);
@@ -527,7 +535,7 @@ void f_out(FILE* f, const TCHAR* format, ...)
 	va_list parms;
 	va_start(parms, format);
 
-	if (f == NULL || !consoleopen)
+	if (f == nullptr || !consoleopen)
 		return;
 	_vsntprintf(buffer, WRITE_LOG_BUF_SIZE - 1, format, parms);
 	openconsole();
@@ -540,8 +548,8 @@ TCHAR* buf_out(TCHAR* buffer, int* bufsize, const TCHAR* format, ...)
 	va_list parms;
 	va_start(parms, format);
 
-	if (buffer == NULL)
-		return 0;
+	if (buffer == nullptr)
+		return nullptr;
 	_vsntprintf(buffer, (*bufsize) - 1, format, parms);
 	va_end(parms);
 	*bufsize -= _tcslen(buffer);

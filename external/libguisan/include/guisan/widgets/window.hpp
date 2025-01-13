@@ -83,12 +83,12 @@ namespace gcn
          *
          * @param caption the caption of the window.
          */
-        Window(const std::string& caption);
+        explicit Window(const std::string& caption);
 
         /**
          * Destructor.
          */
-        virtual ~Window();
+        ~Window() override;
 
         /**
          * Sets the caption of the window.
@@ -104,7 +104,7 @@ namespace gcn
          * @return the caption of the window.
          * @see setCaption
          */
-        const std::string& getCaption() const;
+        [[nodiscard]] const std::string& getCaption() const;
 
         /**
          * Sets the alignment of the caption.
@@ -120,7 +120,7 @@ namespace gcn
          * @return The alignment of caption.
          * @see setAlignment, Graphics
          */
-        Graphics::Alignment getAlignment() const;
+        [[nodiscard]] Graphics::Alignment getAlignment() const;
 
         /**
          * Sets the padding of the window. The padding is the distance between the
@@ -138,7 +138,7 @@ namespace gcn
          * @return The padding of the window.
          * @see setPadding
          */
-        unsigned int getPadding() const;
+        [[nodiscard]] unsigned int getPadding() const;
 
         /**
          * Sets the title bar height.
@@ -154,7 +154,7 @@ namespace gcn
          * @return The title bar height.
          * @see setTitleBarHeight
          */
-        unsigned int getTitleBarHeight() const;
+        unsigned int getTitleBarHeight();
 
         /**
          * Sets the window to be moveble or not.
@@ -170,7 +170,7 @@ namespace gcn
          * @return True if the window is movable, false otherwise.
          * @see setMovable
          */
-        bool isMovable() const;
+        [[nodiscard]] bool isMovable() const;
 
         /**
          * Sets the window to be opaque or not. An opaque window will draw its background
@@ -179,7 +179,7 @@ namespace gcn
          * @param opaque True if the window should be opaque, false otherwise.
          * @see isOpaque
          */
-        void setOpaque(bool opaque);
+        void setOpaque(bool opaque) override;
 
         /**
          * Checks if the window is opaque.
@@ -187,32 +187,24 @@ namespace gcn
          * @return True if the window is opaque, false otherwise.
          * @see setOpaque
          */
-        bool isOpaque() const;
+        bool isOpaque();
 
         /**
          * Resizes the window to fit the content.
          */
-        virtual void resizeToContent();
-
-
-        // Inherited from BasicContainer
-
-        virtual Rectangle getChildrenArea();
-
+        void resizeToContent() override;
 
         // Inherited from Widget
 
-        virtual void draw(Graphics* graphics);
-
-        virtual void drawFrame(Graphics* graphics);
+        void draw(Graphics* graphics) override;
+        void drawFrame(Graphics* graphics) override;
+        Rectangle getChildrenArea() override;
 
         // Inherited from MouseListener
 
-        virtual void mousePressed(MouseEvent& mouseEvent);
-
-        virtual void mouseDragged(MouseEvent& mouseEvent);
-
-        virtual void mouseReleased(MouseEvent& mouseEvent);
+        void mousePressed(MouseEvent& mouseEvent) override;
+        void mouseDragged(MouseEvent& mouseEvent) override;
+        void mouseReleased(MouseEvent& mouseEvent) override;
 
     protected:
         /**
@@ -223,12 +215,12 @@ namespace gcn
         /**
          * Holds the alignment of the caption.
          */
-        Graphics::Alignment mAlignment;
+        Graphics::Alignment mAlignment = Graphics::Alignment::Center;
 
         /**
          * Holds the padding of the window.
          */
-        unsigned int mPadding;
+        unsigned int mPadding = 2;
 
         /**
          * Holds the title bar height of the window.
@@ -238,31 +230,31 @@ namespace gcn
         /**
          * True if the window is movable, false otherwise.
          */
-        bool mMovable;
+        bool mMovable = true;
 
         /**
          * True if the window is opaque, false otherwise.
          */
-        bool mOpaque;
+        bool mOpaque = true;
 
         /**
          * Holds a drag offset as an x coordinate where the drag of the window
          * started if the window is being dragged. It's used to move the window 
          * correctly when dragged.
          */
-        int mDragOffsetX;
+        int mDragOffsetX = 0;
 
         /**
          * Holds a drag offset as an y coordinate where the drag of the window
          * started if the window is being dragged. It's used to move the window 
          * correctly when dragged.
          */
-        int mDragOffsetY;
+        int mDragOffsetY = 0;
 
         /**
          * True if the window is being moved, false otherwise.
          */
-        bool mMoved;
+        bool mMoved = false;
     };
 }
 

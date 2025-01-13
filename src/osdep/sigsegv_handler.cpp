@@ -86,7 +86,7 @@ enum style_type_t {
 static int in_handler = 0;
 static int max_signals = 200;  
 
-void init_max_signals(void)
+void init_max_signals()
 {
 #ifdef WITH_LOGGING
 	max_signals = 20;
@@ -128,9 +128,9 @@ static int handle_exception(mcontext_t sigcont, long fault_addr)
 	int handled = HANDLE_EXCEPTION_NONE;
 // Mac OS X struct for this is different
 #ifndef __MACH__
-	uintptr fault_pc = uintptr(sigcont->pc);
+	auto fault_pc = static_cast<uintptr>(sigcont->pc);
 #else
-	uintptr fault_pc = uintptr(sigcont->__ss.__pc);
+	auto fault_pc = static_cast<uintptr>(sigcont->__ss.__pc);
 #endif
 
 	if (fault_pc == 0) {
@@ -164,7 +164,7 @@ static int handle_exception(mcontext_t sigcont, long fault_addr)
 		}
 
 		// Get Amiga address of illegal memory address
-		long amiga_addr = long(fault_addr) - long(regs.natmem_offset);
+		long amiga_addr = long(fault_addr) - long(natmem_offset);
 
 		// Check for stupid RAM detection of kickstart
 		if (a3000lmem_bank.allocated_size > 0 && amiga_addr >= a3000lmem_bank.start - 0x00100000 && amiga_addr < a3000lmem_bank.start - 0x00100000 + 8) {
@@ -268,17 +268,17 @@ static int handle_exception(mcontext_t sigcont, long fault_addr)
 
 				case SIZE_WORD:
 #ifndef __MACH__
-					sigcont->regs[rd] = bswap_16((uae_u16)get_word(amiga_addr));
+					sigcont->regs[rd] = uae_bswap_16((uae_u16)get_word(amiga_addr));
 #else
-					sigcont->__ss.__x[rd] = bswap_16((uae_u16)get_word(amiga_addr));
+					sigcont->__ss.__x[rd] = uae_bswap_16((uae_u16)get_word(amiga_addr));
 #endif
 					break;
 
 				case SIZE_INT:
 #ifndef __MACH__
-					sigcont->regs[rd] = bswap_32(get_long(amiga_addr));
+					sigcont->regs[rd] = uae_bswap_32(get_long(amiga_addr));
 #else
-					sigcont->__ss.__x[rd] = bswap_32(get_long(amiga_addr));
+					sigcont->__ss.__x[rd] = uae_bswap_32(get_long(amiga_addr));
 #endif
 					break;
 				}
@@ -301,17 +301,17 @@ static int handle_exception(mcontext_t sigcont, long fault_addr)
 				}
 				case SIZE_WORD: {
 #ifndef __MACH__
-					put_word(amiga_addr, bswap_16(sigcont->regs[rd]));
+					put_word(amiga_addr, uae_bswap_16(sigcont->regs[rd]));
 #else
-					put_word(amiga_addr, bswap_16(sigcont->__ss.__x[rd]));
+					put_word(amiga_addr, uae_bswap_16(sigcont->__ss.__x[rd]));
 #endif
 					break;
 				}
 				case SIZE_INT: {
 #ifndef __MACH__
-					put_long(amiga_addr, bswap_32(sigcont->regs[rd]));
+					put_long(amiga_addr, uae_bswap_32(sigcont->regs[rd]));
 #else
-					put_long(amiga_addr, bswap_32(sigcont->__ss.__x[rd]));
+					put_long(amiga_addr, uae_bswap_32(sigcont->__ss.__x[rd]));
 #endif
 					break;
 				}
@@ -345,8 +345,8 @@ static int handle_exception(mcontext_t sigcont, long fault_addr)
 void signal_segv(int signum, siginfo_t* info, void* ptr)
 {
 	int handled = HANDLE_EXCEPTION_NONE;
-		
-	ucontext_t* ucontext = (ucontext_t*)ptr;
+
+	auto ucontext = static_cast<ucontext_t*>(ptr);
 	Dl_info dlinfo;
 
 	output_log(_T("--- New exception ---\n"));
@@ -363,7 +363,7 @@ void signal_segv(int signum, siginfo_t* info, void* ptr)
 	unsigned long long* regs = context->__ss.__x;
 #endif
 
-	uintptr addr = (uintptr)info->si_addr;
+	const auto addr = reinterpret_cast<uintptr>(info->si_addr);
 
 	handled = handle_exception(context, addr);
 
@@ -379,7 +379,7 @@ void signal_segv(int signum, siginfo_t* info, void* ptr)
 		output_log(_T("info.si_code = %d\n"), info->si_code);
 		output_log(_T("info.si_addr = %08x\n"), info->si_addr);
 		if (signum == 4)
-			output_log(_T("       value = 0x%08x\n"), *((uae_u32*)(info->si_addr)));
+			output_log(_T("       value = 0x%08x\n"), *static_cast<uae_u32*>(info->si_addr));
 
 		for (int i = 0; i < 31; ++i)
 #ifndef __MACH__
@@ -399,7 +399,7 @@ void signal_segv(int signum, siginfo_t* info, void* ptr)
 		// I can't find an obvious way to get at the fault address from the OS X side
 		//output_log(_T("Fault Address = 0x%016llx\n"), ucontext->uc_mcontext.fault_address);
 		output_log(_T("pstate  = 0x%016llx\n"), context->__ss.__cpsr);
-		void* getaddr = (void*)context->__ss.__x[30];
+		void* getaddr = reinterpret_cast<void*>(context->__ss.__x[30]);
 #endif
 
 		if (dladdr(getaddr, &dlinfo))
@@ -422,7 +422,7 @@ void signal_segv(int signum, siginfo_t* info, void* ptr)
 			if (dladdr(array[i], &dlinfo)) {
 				const char* symname = dlinfo.dli_sname;
 				output_log(_T("0x%08x <%s + 0x%08x> (%s)\n"), array[i], symname,
-					(unsigned long)array[i] - (unsigned long)dlinfo.dli_saddr, dlinfo.dli_fname);
+					reinterpret_cast<unsigned long>(array[i]) - reinterpret_cast<unsigned long>(dlinfo.dli_saddr), dlinfo.dli_fname);
 			}
 		}
 
@@ -443,7 +443,7 @@ void signal_segv(int signum, siginfo_t* info, void* ptr)
 		--max_signals;
 		if (max_signals <= 0) {
 			target_startup_msg(_T("Exception"), _T("Too many access violations. Please turn off JIT."));
-			uae_restart(&currprefs, 1, NULL);
+			uae_restart(&currprefs, 1, nullptr);
 			return;
 		}
 	}
@@ -457,7 +457,7 @@ void signal_segv(int signum, siginfo_t* info, void* ptr)
 
 void signal_buserror(int signum, siginfo_t* info, void* ptr)
 {
-	ucontext_t* ucontext = (ucontext_t*)ptr;
+	auto ucontext = static_cast<ucontext_t*>(ptr);
 	Dl_info dlinfo;
 
 	output_log(_T("--- New exception ---\n"));
@@ -474,14 +474,14 @@ void signal_buserror(int signum, siginfo_t* info, void* ptr)
 	unsigned long long* regs = context->__ss.__x;
 #endif
 
-	uintptr_t addr = (uintptr_t)info->si_addr;
+	auto addr = reinterpret_cast<uintptr_t>(info->si_addr);
 
 	output_log(_T("info.si_signo = %d\n"), signum);
 	output_log(_T("info.si_errno = %d\n"), info->si_errno);
 	output_log(_T("info.si_code = %d\n"), info->si_code);
 	output_log(_T("info.si_addr = %08x\n"), info->si_addr);
 	if (signum == 4)
-		output_log(_T("       value = 0x%08x\n"), *((uae_u32*)(info->si_addr)));
+		output_log(_T("       value = 0x%08x\n"), *static_cast<uae_u32*>(info->si_addr));
 
 	for (int i = 0; i < 31; ++i)
 #ifndef __MACH__
@@ -500,7 +500,7 @@ void signal_buserror(int signum, siginfo_t* info, void* ptr)
 	//output_log(_T("Fault Address = 0x%016llx\n"), context->uc_mcontext.fault_address);
 	output_log(_T("pstate  = 0x%016llx\n"), context->__ss.__cpsr);
 
-	void* getaddr = (void*)context->__ss.__x[30];
+	void* getaddr = reinterpret_cast<void*>(context->__ss.__x[30]);
 #endif
 
 
@@ -520,15 +520,14 @@ void signal_buserror(int signum, siginfo_t* info, void* ptr)
 		if (dladdr(array[i], &dlinfo)) {
 			const char* symname = dlinfo.dli_sname;
 			output_log(_T("0x%08x <%s + 0x%08x> (%s)\n"), array[i], symname,
-				(unsigned long)array[i] - (unsigned long)dlinfo.dli_saddr, dlinfo.dli_fname);
+				reinterpret_cast<unsigned long>(array[i]) - reinterpret_cast<unsigned long>(dlinfo.dli_saddr), dlinfo.dli_fname);
 		}
 	}
 
 	output_log(_T("Stack trace (non-dedicated):\n"));
-	char** strings;
 	void* bt[100];
-	int sz = backtrace(bt, 100);
-	strings = backtrace_symbols(bt, sz);
+	const int sz = backtrace(bt, 100);
+	char** strings = backtrace_symbols(bt, sz);
 	for (int i = 0; i < sz; ++i)
 		output_log(_T("%s\n"), strings[i]);
 	output_log(_T("End of stack trace.\n"));
@@ -570,6 +569,7 @@ static int delete_trigger(blockinfo *bi, void *pc)
 }
 #endif
 
+typedef uae_u32 uintptr;
 
 static int handle_exception(unsigned long* pregs, long fault_addr)
 {
@@ -607,7 +607,7 @@ static int handle_exception(unsigned long* pregs, long fault_addr)
 		}
 
 		// Get Amiga address of illegal memory address
-		auto amiga_addr = (long)fault_addr - (long)regs.natmem_offset;
+		auto amiga_addr = (long)fault_addr - (long)natmem_offset;
 
 		// Check for stupid RAM detection of kickstart
 		if (a3000lmem_bank.allocated_size > 0 && amiga_addr >= a3000lmem_bank.start - 0x00100000 && amiga_addr < a3000lmem_bank.start - 0x00100000 + 8) {
@@ -697,11 +697,11 @@ static int handle_exception(unsigned long* pregs, long fault_addr)
 					break;
 
 				case SIZE_WORD:
-					pregs[rd] = bswap_16(style == STYLE_SIGNED ? (uae_s16)get_word(amiga_addr) : (uae_u16)get_word(amiga_addr));
+					pregs[rd] = uae_bswap_16(style == STYLE_SIGNED ? (uae_s16)get_word(amiga_addr) : (uae_u16)get_word(amiga_addr));
 					break;
 
 				case SIZE_INT:
-					pregs[rd] = bswap_32(get_long(amiga_addr));
+					pregs[rd] = uae_bswap_32(get_long(amiga_addr));
 					break;
 				}
 				output_log(_T("New value in %s: 0x%08x (old: 0x%08x)\n"), reg_names[rd], pregs[rd], oldval);
@@ -714,11 +714,11 @@ static int handle_exception(unsigned long* pregs, long fault_addr)
 					break;
 				}
 				case SIZE_WORD: {
-					put_word(amiga_addr, bswap_16(pregs[rd]));
+					put_word(amiga_addr, uae_bswap_16(pregs[rd]));
 					break;
 				}
 				case SIZE_INT: {
-					put_long(amiga_addr, bswap_32(pregs[rd]));
+					put_long(amiga_addr, uae_bswap_32(pregs[rd]));
 					break;
 				}
 				}

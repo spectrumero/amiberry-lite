@@ -1,6 +1,7 @@
-#include <string.h>
+#include <cstring>
 
 #include "sysdeps.h"
+#include "gui.h"
 #include "options.h"
 #include "inputdevice.h"
 #include "keyboard.h"
@@ -328,11 +329,11 @@ void setcapslockstate(int state)
 	capslockstate = state;
 }
 
-int getcapslock(void)
+int getcapslock()
 {
 	int capstable[7];
 
-	// this returns bogus state if caps change when in exclusive mode..
+	// this returns bogus state if caps change when in exclusive mode...
 	host_capslockstate = SDL_GetModState() & KMOD_CAPS;
 	host_numlockstate = SDL_GetModState() & KMOD_NUM;
 	host_scrolllockstate = 0; //SDL_GetModState() & ;
@@ -352,7 +353,7 @@ void clearallkeys()
 	inputdevice_updateconfig(&changed_prefs, &currprefs);
 }
 
-static const int np[] = {
+static constexpr int np[] = {
 	SDL_SCANCODE_KP_0, 0, SDL_SCANCODE_KP_PERIOD, 0, SDL_SCANCODE_KP_1, 1, SDL_SCANCODE_KP_2, 2,
 	SDL_SCANCODE_KP_3, 3, SDL_SCANCODE_KP_4, 4, SDL_SCANCODE_KP_5, 5, SDL_SCANCODE_KP_6, 6, SDL_SCANCODE_KP_7, 7,
 	SDL_SCANCODE_KP_8, 8, SDL_SCANCODE_KP_9, 9, -1 };
@@ -483,8 +484,7 @@ bool my_kbd_handler(int keyboard, int scancode, int newstate, bool alwaysrelease
 						swapperdrive = 0;
 				}
 				else {
-					int i;
-					for (i = 0; i < 4; i++) {
+					for (int i = 0; i < 4; i++) {
 						if (!_tcscmp(currprefs.floppyslots[i].df, currprefs.dfxlist[num]))
 							changed_prefs.floppyslots[i].df[0] = 0;
 					}
@@ -518,11 +518,12 @@ bool my_kbd_handler(int keyboard, int scancode, int newstate, bool alwaysrelease
 				special = true;
 			}
 			break;
+		default: break;
 		}
 	}
 
 	if (code) {
-		inputdevice_add_inputcode(code, 1, NULL);
+		inputdevice_add_inputcode(code, 1, nullptr);
 		return true;
 	}
 
@@ -550,7 +551,7 @@ bool my_kbd_handler(int keyboard, int scancode, int newstate, bool alwaysrelease
 	return inputdevice_translatekeycode(keyboard, scancode, newstate, alwaysrelease) != 0;
 }
 
-void keyboard_settrans(void)
+void keyboard_settrans()
 {
 	inputdevice_setkeytranslation(keytrans, kbmaps);
 }

@@ -3,8 +3,8 @@
 ### Amiberry files ###
 conf/*.uae
 conf/*.conf
-kickstarts/*.rom
-kickstarts/*.key
+roms/*.rom
+roms/*.key
 /amiberry*
 
 ### VisualGDB ###
@@ -226,3 +226,5 @@ cmake-build-debug-remote-host
 cmake-build-release-remote-host
 cmake-build-debug-opengl
 cmake-build-*
+_CPack_Packages
+.idea

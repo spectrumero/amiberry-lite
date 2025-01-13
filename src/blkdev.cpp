@@ -408,7 +408,7 @@ static int get_standard_cd_unit2 (struct uae_prefs *p, cd_standard_unit csu)
 #endif
 	if (isaudio) {
 		TCHAR vol[100];
-		_stprintf (vol, _T("%c:\\"), isaudio);
+		_sntprintf (vol, sizeof vol, _T("%c:\\"), isaudio);
 		if (sys_command_open_internal (unitnum, vol, csu)) 
 			return unitnum;
 	}
@@ -1984,11 +1984,10 @@ int scsi_cd_emulate (int unitnum, uae_u8 *cmdbuf, int scsi_cmd_len,
 			goto readerr;
 		struct cd_toc_head *toc = &ttoc;
 		if (strack < toc->first_track || strack > toc->last_track ||
-			etrack < toc->first_track || etrack > toc->last_track ||
-			strack > etrack)
+			etrack < toc->first_track || strack > etrack)
 			goto errreq;
 		int start = toc->toc[toc->first_track_offset + strack - 1].paddress;
-		int end = etrack == toc->last_track ? toc->lastaddress : toc->toc[toc->first_track_offset + etrack - 1 + 1].paddress;
+		int end = etrack >= toc->last_track ? toc->lastaddress : toc->toc[toc->first_track_offset + etrack - 1 + 1].paddress;
 		sys_command_cd_pause (unitnum, 0);
 		if (!sys_command_cd_play (unitnum, start, end, 0))
 			goto wrongtracktype;

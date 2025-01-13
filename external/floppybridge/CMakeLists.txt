@@ -16,17 +16,10 @@ add_library(floppybridge SHARED
     src/SuperCardProInterface.cpp
 )
 target_include_directories(${PROJECT_NAME} PRIVATE src)
+target_link_libraries(${PROJECT_NAME} PRIVATE pthread dl)
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    message(STATUS "macOS platform detected")
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND cp libfloppybridge.dylib libfloppybridge.so
-        COMMAND install_name_tool -id libfloppybridge.so libfloppybridge.so
-    )
-endif ()
-
-install(TARGETS ${PROJECT_NAME}
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-)
+#install(TARGETS ${PROJECT_NAME}
+#  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/amiberry
+#  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+#)

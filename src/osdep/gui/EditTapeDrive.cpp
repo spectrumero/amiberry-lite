@@ -127,6 +127,7 @@ static void InitEditTapeDrive()
 	wndEditTapeDrive->setForegroundColor(gui_foreground_color);
 	wndEditTapeDrive->setCaption("Tape Drive Settings");
 	wndEditTapeDrive->setTitleBarHeight(TITLEBAR_HEIGHT);
+	wndEditTapeDrive->setMovable(false);
 
 	tapeDriveActionListener = new TapeDriveActionListener();
 
@@ -154,7 +155,7 @@ static void InitEditTapeDrive()
 	txtTapeDrivePath->setSize(490, TEXTFIELD_HEIGHT);
 	txtTapeDrivePath->setId("txtTapeDrivePath");
 	txtTapeDrivePath->setBaseColor(gui_base_color);
-	txtTapeDrivePath->setBackgroundColor(gui_textbox_background_color);
+	txtTapeDrivePath->setBackgroundColor(gui_background_color);
 	txtTapeDrivePath->setForegroundColor(gui_foreground_color);
 
 	cmdTapeDriveSelectDir = new gcn::Button("Select Directory");
@@ -176,7 +177,7 @@ static void InitEditTapeDrive()
 	cboTapeDriveController = new gcn::DropDown(&controllerListModel);
 	cboTapeDriveController->setSize(180, DROPDOWN_HEIGHT);
 	cboTapeDriveController->setBaseColor(gui_base_color);
-	cboTapeDriveController->setBackgroundColor(gui_textbox_background_color);
+	cboTapeDriveController->setBackgroundColor(gui_background_color);
 	cboTapeDriveController->setForegroundColor(gui_foreground_color);
 	cboTapeDriveController->setSelectionColor(gui_selection_color);
 	cboTapeDriveController->setId("cboTapeDriveController");
@@ -185,14 +186,13 @@ static void InitEditTapeDrive()
 	cboTapeDriveUnit = new gcn::DropDown(&unitListModel);
 	cboTapeDriveUnit->setSize(60, DROPDOWN_HEIGHT);
 	cboTapeDriveUnit->setBaseColor(gui_base_color);
-	cboTapeDriveUnit->setBackgroundColor(gui_textbox_background_color);
+	cboTapeDriveUnit->setBackgroundColor(gui_background_color);
 	cboTapeDriveUnit->setForegroundColor(gui_foreground_color);
 	cboTapeDriveUnit->setSelectionColor(gui_selection_color);
 	cboTapeDriveUnit->setId("cboTapeDriveUnit");
 	cboTapeDriveUnit->addActionListener(tapeDriveActionListener);
 
 	int posY = DISTANCE_BORDER;
-	int posX = DISTANCE_BORDER;
 
 	wndEditTapeDrive->add(lblTapeDrivePath, DISTANCE_BORDER, posY);
 	wndEditTapeDrive->add(txtTapeDrivePath, lblTapeDrivePath->getX() + lblTapeDrivePath->getWidth() + 8, posY);
@@ -506,7 +506,6 @@ bool EditTapeDrive(const int unit_no)
 	const AmigaMonitor* mon = &AMonitors[0];
 
 	mountedinfo mi{};
-	uaedev_config_data* uci;
 
 	dialogResult = false;
 	dialogFinished = false;
@@ -527,7 +526,7 @@ bool EditTapeDrive(const int unit_no)
 
 	if (unit_no >= 0)
 	{
-		uci = &changed_prefs.mountconfig[unit_no];
+		uaedev_config_data* uci = &changed_prefs.mountconfig[unit_no];
 		get_filesys_unitconfig(&changed_prefs, unit_no, &mi);
 		memcpy(&current_tapedlg.ci, uci, sizeof(uaedev_config_info));
 

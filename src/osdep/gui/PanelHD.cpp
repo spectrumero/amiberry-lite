@@ -57,13 +57,14 @@ static gcn::Button* cmdCreateHardfile;
 static gcn::Button* cmdAddCDDrive;
 static gcn::Button* cmdAddTapeDrive;
 
+static gcn::CheckBox* chkCDFSAutomount;
 static gcn::CheckBox* chkCD;
 static gcn::DropDown* cboCDFile;
 static gcn::Button* cmdCDEject;
 static gcn::Button* cmdCDSelectFile;
 static gcn::CheckBox* chkCDTurbo;
 
-static void harddisktype(TCHAR* s, struct uaedev_config_info* ci)
+static void harddisktype(TCHAR* s, const struct uaedev_config_info* ci)
 {
 	switch (ci->type)
 	{
@@ -262,6 +263,8 @@ public:
 		}
 		else if (actionEvent.getSource() == chkCDTurbo)
 			changed_prefs.cd_speed = chkCDTurbo->isSelected() ? 0 : 100;
+		else if (actionEvent.getSource() == chkCDFSAutomount)
+			changed_prefs.automount_cddrives = chkCDFSAutomount->isSelected();
 
 		RefreshPanelHD();
 		RefreshPanelQuickstart();
@@ -307,7 +310,8 @@ public:
 
 					RefreshCDListModel();
 					AdjustDropDownControls();
-					SetLastActiveConfig(tmp.c_str());
+					if (!last_loaded_config[0])
+						set_last_active_config(tmp.c_str());
 				}
 			}
 			cmdCDSelectFile->requestFocus();
@@ -352,7 +356,8 @@ public:
 					bIgnoreListChange = true;
 					cboCDFile->setSelected(0);
 					bIgnoreListChange = false;
-					SetLastActiveConfig(element.c_str());
+					if (!last_loaded_config[0])
+						set_last_active_config(element.c_str());
 				}
 			}
 		}
@@ -366,7 +371,6 @@ void InitPanelHD(const config_category& category)
 {
 	int row, col;
 	auto posY = DISTANCE_BORDER / 2;
-	std::string id_string;
 
 	RefreshCDListModel();
 
@@ -382,7 +386,7 @@ void InitPanelHD(const config_category& category)
 		listEntry[row] = new gcn::Container();
 		listEntry[row]->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, SMALL_BUTTON_HEIGHT + 4);
 		listEntry[row]->setBaseColor(gui_base_color);
-		listEntry[row]->setBackgroundColor(gui_textbox_background_color);
+		listEntry[row]->setBackgroundColor(gui_background_color);
 		listEntry[row]->setForegroundColor(gui_foreground_color);
 		listEntry[row]->setFrameSize(0);
 
@@ -390,7 +394,7 @@ void InitPanelHD(const config_category& category)
 		listCmdProps[row]->setBaseColor(gui_base_color);
 		listCmdProps[row]->setForegroundColor(gui_foreground_color);
 		listCmdProps[row]->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-		id_string = "cmdProp" + to_string(row);
+		std::string id_string = "cmdProp" + to_string(row);
 		listCmdProps[row]->setId(id_string);
 		listCmdProps[row]->addActionListener(hdEditActionListener);
 
@@ -408,7 +412,7 @@ void InitPanelHD(const config_category& category)
 			listCells[row][col]->setSize(COLUMN_SIZE[col], SMALL_BUTTON_HEIGHT);
 			listCells[row][col]->setEnabled(false);
 			listCells[row][col]->setBaseColor(gui_base_color);
-			listCells[row][col]->setBackgroundColor(gui_textbox_background_color);
+			listCells[row][col]->setBackgroundColor(gui_background_color);
 			listCells[row][col]->setForegroundColor(gui_foreground_color);
 		}
 	}
@@ -461,17 +465,24 @@ void InitPanelHD(const config_category& category)
 	cdButtonActionListener = new CDButtonActionListener();
 	cdFileActionListener = new CDFileActionListener();
 
+	chkCDFSAutomount = new gcn::CheckBox("CDFS automount CD/DVD drives");
+	chkCDFSAutomount->setId("chkCDFSAutomount");
+	chkCDFSAutomount->setBaseColor(gui_base_color);
+	chkCDFSAutomount->setBackgroundColor(gui_background_color);
+	chkCDFSAutomount->setForegroundColor(gui_foreground_color);
+	chkCDFSAutomount->addActionListener(cdCheckActionListener);
+
 	chkCD = new gcn::CheckBox("CD drive/image");
 	chkCD->setId("chkCD");
 	chkCD->setBaseColor(gui_base_color);
-	chkCD->setBackgroundColor(gui_textbox_background_color);
+	chkCD->setBackgroundColor(gui_background_color);
 	chkCD->setForegroundColor(gui_foreground_color);
 	chkCD->addActionListener(cdCheckActionListener);
 
 	chkCDTurbo = new gcn::CheckBox("CDTV/CDTV-CR/CD32 turbo CD read speed");
 	chkCDTurbo->setId("chkCDTurbo");
 	chkCDTurbo->setBaseColor(gui_base_color);
-	chkCDTurbo->setBackgroundColor(gui_textbox_background_color);
+	chkCDTurbo->setBackgroundColor(gui_background_color);
 	chkCDTurbo->setForegroundColor(gui_foreground_color);
 	chkCDTurbo->addActionListener(cdCheckActionListener);
 
@@ -492,7 +503,7 @@ void InitPanelHD(const config_category& category)
 	cboCDFile = new gcn::DropDown(&cdfileList);
 	cboCDFile->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, cboCDFile->getHeight());
 	cboCDFile->setBaseColor(gui_base_color);
-	cboCDFile->setBackgroundColor(gui_textbox_background_color);
+	cboCDFile->setBackgroundColor(gui_background_color);
 	cboCDFile->setForegroundColor(gui_foreground_color);
 	cboCDFile->setSelectionColor(gui_selection_color);
 	cboCDFile->setId("cboCD");
@@ -533,7 +544,9 @@ void InitPanelHD(const config_category& category)
 	category.panel->add(cmdCreateHardfile, cmdAddTapeDrive->getX() + cmdAddTapeDrive->getWidth() + DISTANCE_NEXT_X, posY);
 	posY += cmdCreateHardfile->getHeight() + DISTANCE_NEXT_Y * 2;
 
-	category.panel->add(chkCD, DISTANCE_BORDER, posY + 2);
+	category.panel->add(chkCDFSAutomount, DISTANCE_BORDER, posY + 2);
+	posY = chkCDFSAutomount->getY() + chkCDFSAutomount->getHeight() + DISTANCE_NEXT_Y;
+	category.panel->add(chkCD, DISTANCE_BORDER, posY);
 	category.panel->add(cmdCDEject, category.panel->getWidth() - cmdCDEject->getWidth() - DISTANCE_BORDER, posY);
 	category.panel->add(cmdCDSelectFile, cmdCDEject->getX() - DISTANCE_NEXT_X - cmdCDSelectFile->getWidth(), posY);
 	posY += cmdCDSelectFile->getHeight() + DISTANCE_NEXT_Y;
@@ -569,6 +582,7 @@ void ExitPanelHD()
 	delete cmdAddTapeDrive;
 	delete cmdCreateHardfile;
 
+	delete chkCDFSAutomount;
 	delete chkCD;
 	delete cmdCDEject;
 	delete cmdCDSelectFile;
@@ -605,26 +619,23 @@ static void AdjustDropDownControls()
 
 void RefreshPanelHD()
 {
-	char tmp[32];
-	TCHAR size_str[32];
-	TCHAR blocksize_str[32];
-	TCHAR devname_str[256];
-	TCHAR volname_str[256];
-	TCHAR bootpri_str[32];
-
 	AdjustDropDownControls();
 
 	for (auto row = 0; row < MAX_HD_DEVICES; ++row)
 	{
 		if (row < changed_prefs.mountitems)
 		{
+			TCHAR bootpri_str[32];
+			TCHAR volname_str[256];
+			TCHAR devname_str[256];
+			TCHAR size_str[32];
+			TCHAR blocksize_str[32];
 			auto* uci = &changed_prefs.mountconfig[row];
 			auto* const ci = &uci->ci;
-			int nosize = 0, type, ctype;
-			struct mountedinfo mi;
-			TCHAR* rootdir, * rootdirp;
+			int nosize = 0;
+			struct mountedinfo mi{};
 
-			type = get_filesys_unitconfig(&changed_prefs, row, &mi);
+			int type = get_filesys_unitconfig(&changed_prefs, row, &mi);
 			if (type < 0)
 			{
 				type = ci->type == UAEDEV_HDF || ci->type == UAEDEV_CD || ci->type == UAEDEV_TAPE ? FILESYS_HARDFILE : FILESYS_VIRTUAL;
@@ -632,8 +643,8 @@ void RefreshPanelHD()
 			}
 			if (mi.size < 0)
 				nosize = 1;
-			rootdir = my_strdup(mi.rootdir);
-			rootdirp = rootdir;
+			TCHAR* rootdir = my_strdup(mi.rootdir);
+			TCHAR* rootdirp = rootdir;
 			if (!_tcsncmp(rootdirp, _T("HD_"), 3))
 				rootdirp += 3;
 			if (rootdirp[0] == ':') {
@@ -646,28 +657,28 @@ void RefreshPanelHD()
 			if (nosize)
 				_tcscpy(size_str, _T("n/a"));
 			else if (mi.size >= 1024 * 1024 * 1024)
-				_stprintf(size_str, _T("%.1fG"), ((double)(uae_u32)(mi.size / (1024 * 1024))) / 1024.0);
+				_sntprintf(size_str, sizeof size_str, _T("%.1fG"), static_cast<double>(static_cast<uae_u32>(mi.size / (1024 * 1024))) / 1024.0);
 			else if (mi.size < 10 * 1024 * 1024)
-				_stprintf(size_str, _T("%lldK"), mi.size / 1024);
+				_sntprintf(size_str, sizeof size_str, _T("%lldK"), mi.size / 1024);
 			else
-				_stprintf(size_str, _T("%.1fM"), ((double)(uae_u32)(mi.size / (1024))) / 1024.0);
+				_sntprintf(size_str, sizeof size_str, _T("%.1fM"), static_cast<double>(static_cast<uae_u32>(mi.size / (1024))) / 1024.0);
 
-			ctype = ci->controller_type;
+			int ctype = ci->controller_type;
 			if (ctype >= HD_CONTROLLER_TYPE_IDE_FIRST && ctype <= HD_CONTROLLER_TYPE_IDE_LAST) {
 				const struct expansionromtype* ert = get_unit_expansion_rom(ctype);
 				const TCHAR* idedevs[] = {
 					_T("IDE:%d"),
 					_T("A600/A1200/A4000:%d"),
 				};
-				_stprintf(blocksize_str, _T("%d"), ci->blocksize);
+				_sntprintf(blocksize_str, sizeof blocksize_str, _T("%d"), ci->blocksize);
 				if (ert) {
 					if (ci->controller_type_unit == 0)
-						_stprintf(devname_str, _T("%s:%d"), ert->friendlyname, ci->controller_unit);
+						_sntprintf(devname_str, sizeof devname_str, _T("%s:%d"), ert->friendlyname, ci->controller_unit);
 					else
-						_stprintf(devname_str, _T("%s:%d/%d"), ert->friendlyname, ci->controller_unit, ci->controller_type_unit + 1);
+						_sntprintf(devname_str, sizeof devname_str, _T("%s:%d/%d"), ert->friendlyname, ci->controller_unit, ci->controller_type_unit + 1);
 				}
 				else {
-					_stprintf(devname_str, idedevs[ctype - HD_CONTROLLER_TYPE_IDE_FIRST], ci->controller_unit);
+					_sntprintf(devname_str, sizeof devname_str, idedevs[ctype - HD_CONTROLLER_TYPE_IDE_FIRST], ci->controller_unit);
 				}
 				harddisktype(volname_str, ci);
 				_tcscpy(bootpri_str, _T("n/a"));
@@ -686,16 +697,16 @@ void RefreshPanelHD()
 				else if (ci->controller_unit == 8 && ert && !_tcscmp(ert->name, _T("a2090a")))
 					_tcscpy(sid, _T("ST-506"));
 				else
-					_stprintf(sid, _T("%d"), ci->controller_unit);
-				_stprintf(blocksize_str, _T("%d"), ci->blocksize);
+					_sntprintf(sid, sizeof sid, _T("%d"), ci->controller_unit);
+				_sntprintf(blocksize_str, sizeof blocksize_str, _T("%d"), ci->blocksize);
 				if (ert) {
 					if (ci->controller_type_unit == 0)
-						_stprintf(devname_str, _T("%s:%s"), ert->friendlyname, sid);
+						_sntprintf(devname_str, sizeof devname_str, _T("%s:%s"), ert->friendlyname, sid);
 					else
-						_stprintf(devname_str, _T("%s:%s/%d"), ert->friendlyname, sid, ci->controller_type_unit + 1);
+						_sntprintf(devname_str, sizeof devname_str, _T("%s:%s/%d"), ert->friendlyname, sid, ci->controller_type_unit + 1);
 				}
 				else {
-					_stprintf(devname_str, scsidevs[ctype - HD_CONTROLLER_TYPE_SCSI_FIRST], sid);
+					_sntprintf(devname_str, sizeof devname_str, scsidevs[ctype - HD_CONTROLLER_TYPE_SCSI_FIRST], sid);
 				}
 				harddisktype(volname_str, ci);
 				_tcscpy(bootpri_str, _T("n/a"));
@@ -703,33 +714,33 @@ void RefreshPanelHD()
 			else if (ctype >= HD_CONTROLLER_TYPE_CUSTOM_FIRST && ctype <= HD_CONTROLLER_TYPE_CUSTOM_LAST) {
 				TCHAR sid[8];
 				const struct expansionromtype* ert = get_unit_expansion_rom(ctype);
-				_stprintf(sid, _T("%d"), ci->controller_unit);
+				_sntprintf(sid, sizeof sid, _T("%d"), ci->controller_unit);
 				if (ert) {
 					if (ci->controller_type_unit == 0)
-						_stprintf(devname_str, _T("%s:%s"), ert->friendlyname, sid);
+						_sntprintf(devname_str, sizeof devname_str, _T("%s:%s"), ert->friendlyname, sid);
 					else
-						_stprintf(devname_str, _T("%s:%s/%d"), ert->friendlyname, sid, ci->controller_type_unit + 1);
+						_sntprintf(devname_str, sizeof devname_str, _T("%s:%s/%d"), ert->friendlyname, sid, ci->controller_type_unit + 1);
 				}
 				else {
-					_stprintf(devname_str, _T("PCMCIA"));
+					_sntprintf(devname_str, sizeof devname_str, _T("PCMCIA"));
 				}
 				harddisktype(volname_str, ci);
 				_tcscpy(bootpri_str, _T("n/a"));
 			}
 			else if (type == FILESYS_HARDFILE) {
-				_stprintf(blocksize_str, _T("%d"), ci->blocksize);
+				_sntprintf(blocksize_str, sizeof blocksize_str, _T("%d"), ci->blocksize);
 				_tcscpy(devname_str, ci->devname);
 				_tcscpy(volname_str, _T("n/a"));
-				_stprintf(bootpri_str, _T("%d"), ci->bootpri);
+				_sntprintf(bootpri_str, sizeof bootpri_str, _T("%d"), ci->bootpri);
 			}
 			else if (type == FILESYS_HARDFILE_RDB || type == FILESYS_HARDDRIVE || ci->controller_type != HD_CONTROLLER_TYPE_UAE) {
-				_stprintf(blocksize_str, _T("%d"), ci->blocksize);
-				_stprintf(devname_str, _T("UAE:%d"), ci->controller_unit);
+				_sntprintf(blocksize_str, sizeof blocksize_str, _T("%d"), ci->blocksize);
+				_sntprintf(devname_str, sizeof devname_str, _T("UAE:%d"), ci->controller_unit);
 				_tcscpy(volname_str, _T("n/a"));
 				_tcscpy(bootpri_str, _T("n/a"));
 			}
 			else if (type == FILESYS_TAPE) {
-				_stprintf(blocksize_str, _T("%d"), ci->blocksize);
+				_sntprintf(blocksize_str, sizeof blocksize_str, _T("%d"), ci->blocksize);
 				_tcscpy(devname_str, _T("UAE"));
 				harddisktype(volname_str, ci);
 				_tcscpy(bootpri_str, _T("n/a"));
@@ -739,7 +750,7 @@ void RefreshPanelHD()
 				_tcscpy(devname_str, ci->devname);
 				_tcscpy(volname_str, ci->volname);
 				_tcscpy(size_str, _T("n/a"));
-				_stprintf(bootpri_str, _T("%d"), ci->bootpri);
+				_sntprintf(bootpri_str, sizeof bootpri_str, _T("%d"), ci->bootpri);
 			}
 			if (!mi.ismedia) {
 				_tcscpy(blocksize_str, _T("n/a"));
@@ -771,6 +782,7 @@ void RefreshPanelHD()
 		}
 	}
 
+	chkCDFSAutomount->setSelected(changed_prefs.automount_cddrives);
 	chkCD->setSelected(changed_prefs.cdslots[0].inuse);
 	cmdCDEject->setEnabled(changed_prefs.cdslots[0].inuse);
 	cmdCDSelectFile->setEnabled(changed_prefs.cdslots[0].inuse);
@@ -784,7 +796,7 @@ void RefreshPanelHD()
 	}
 }
 
-int count_HDs(uae_prefs* p)
+int count_HDs(const uae_prefs* p)
 {
 	return p->mountitems;
 }
@@ -792,19 +804,34 @@ int count_HDs(uae_prefs* p)
 bool HelpPanelHD(std::vector<std::string>& helptext)
 {
 	helptext.clear();
-	helptext.emplace_back(R"(Use "Add Directory" to add a folder or "Add Hardfile" to add a HDF file as)");
-	helptext.emplace_back("a hard disk. To edit the settings of a HDD, click on \"...\" left to the entry in");
-	helptext.emplace_back("the list. With the red cross, you can delete an entry.");
+	helptext.emplace_back("Hard Drives and CD/DVD drives");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("This panel allows you to add and configure virtual hard drives and CD/DVD drives.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back(R"(Use "Add Directory/Archive" to add a folder or Archive as a virtual Amiga drive.)");
+	helptext.emplace_back(R"(Use "Add Hardfile to add an HDD image (hdf) as a hard disk.)");
+	helptext.emplace_back(R"(Use "Add Hard Drive" to add a physical hard drive as a hard disk.)");
+	helptext.emplace_back(R"(Use "Add Tape Drive" to add a tape drive (directory or file only).)");
 	helptext.emplace_back(" ");
 	helptext.emplace_back("With \"Create Hardfile\", you can create a new formatted HDF file up to 2 GB.");
 	helptext.emplace_back("For large files, it will take some time to create the new hard disk. You have to");
 	helptext.emplace_back("format the new HDD in the Amiga via the Workbench.");
 	helptext.emplace_back(" ");
-	helptext.emplace_back("If \"Master harddrive write protection\" is activated, you can't write to any HD.");
+	helptext.emplace_back("You can use the \"...\" button to edit the selected drive. You can change the");
+	helptext.emplace_back("name, volume label, path, read/write mode, size and boot priority.");
 	helptext.emplace_back(" ");
-	helptext.emplace_back(R"(Activate "CD drive" to emulate a CD drive. Use "Eject" to remove current CD)");
-	helptext.emplace_back("and click on \"...\" to open a dialog to select the iso/cue file for CD emulation.");
+	helptext.emplace_back("Use the \"Delete\" button to remove the selected drive.");
 	helptext.emplace_back(" ");
-	helptext.emplace_back("In the current version, WAV, MP3 and FLAC files are supported for audio tracks.");
+	helptext.emplace_back("CD/DVD drives:");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("Use \"CD drive/image\" to connect a CD drive. You can select an iso/cue file");
+	helptext.emplace_back("or use the \"Eject\" button to remove the CD from the drive.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("You can enable the \"CDTV/CDTV-CR/CD32 turbo CD read speed\" option to speed up");
+	helptext.emplace_back("the CD read speed.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("You can enable the \"CDFS automount CD/DVD drives\" option to automatically mount");
+	helptext.emplace_back("CD/DVD drives on Workbench, when a CD/DVD is inserted.");
+	helptext.emplace_back(" ");
 	return true;
 }

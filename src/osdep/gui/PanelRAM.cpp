@@ -92,15 +92,15 @@ static MemorySliderActionListener* memorySliderActionListener;
 void InitPanelRAM(const config_category& category)
 {
 	memorySliderActionListener = new MemorySliderActionListener();
-	const int sld_width = 150;
+	constexpr int sld_width = 150;
 	int marker_length = 20;
 
 	lblChipmem = new gcn::Label("Chip:");
 	sldChipmem = new gcn::Slider(0, 6);
 	sldChipmem->setSize(sld_width, SLIDER_HEIGHT);
 	sldChipmem->setBaseColor(gui_base_color);
-	sldChipmem->setBackgroundColor(gui_textbox_background_color);
-	sldChipmem->setForegroundColor(gui_base_color);
+	sldChipmem->setBackgroundColor(gui_background_color);
+	sldChipmem->setForegroundColor(gui_foreground_color);
 	sldChipmem->setMarkerLength(marker_length);
 	sldChipmem->setStepLength(1);
 	sldChipmem->setId("sldChipmem");
@@ -111,8 +111,8 @@ void InitPanelRAM(const config_category& category)
 	sldSlowmem = new gcn::Slider(0, 4);
 	sldSlowmem->setSize(sld_width, SLIDER_HEIGHT);
 	sldSlowmem->setBaseColor(gui_base_color);
-	sldSlowmem->setBackgroundColor(gui_textbox_background_color);
-	sldSlowmem->setForegroundColor(gui_base_color);
+	sldSlowmem->setBackgroundColor(gui_background_color);
+	sldSlowmem->setForegroundColor(gui_foreground_color);
 	sldSlowmem->setMarkerLength(marker_length);
 	sldSlowmem->setStepLength(1);
 	sldSlowmem->setId("sldSlowmem");
@@ -123,8 +123,8 @@ void InitPanelRAM(const config_category& category)
 	sldFastmem = new gcn::Slider(0, 8);
 	sldFastmem->setSize(sld_width, SLIDER_HEIGHT);
 	sldFastmem->setBaseColor(gui_base_color);
-	sldFastmem->setBackgroundColor(gui_textbox_background_color);
-	sldFastmem->setForegroundColor(gui_base_color);
+	sldFastmem->setBackgroundColor(gui_background_color);
+	sldFastmem->setForegroundColor(gui_foreground_color);
 	sldFastmem->setMarkerLength(marker_length);
 	sldFastmem->setStepLength(1);
 	sldFastmem->setId("sldFastmem");
@@ -138,8 +138,8 @@ void InitPanelRAM(const config_category& category)
 		sldZ3mem = new gcn::Slider(0, 10);
 	sldZ3mem->setSize(sld_width, SLIDER_HEIGHT);
 	sldZ3mem->setBaseColor(gui_base_color);
-	sldZ3mem->setBackgroundColor(gui_textbox_background_color);
-	sldZ3mem->setForegroundColor(gui_base_color);
+	sldZ3mem->setBackgroundColor(gui_background_color);
+	sldZ3mem->setForegroundColor(gui_foreground_color);
 	sldZ3mem->setMarkerLength(marker_length);
 	sldZ3mem->setStepLength(1);
 	sldZ3mem->setId("sldZ3mem");
@@ -163,8 +163,8 @@ void InitPanelRAM(const config_category& category)
 	sldMbResLowmem = new gcn::Slider(0, 7);
 	sldMbResLowmem->setSize(sld_width, SLIDER_HEIGHT);
 	sldMbResLowmem->setBaseColor(gui_base_color);
-	sldMbResLowmem->setBackgroundColor(gui_textbox_background_color);
-	sldMbResLowmem->setForegroundColor(gui_base_color);
+	sldMbResLowmem->setBackgroundColor(gui_background_color);
+	sldMbResLowmem->setForegroundColor(gui_foreground_color);
 	sldMbResLowmem->setMarkerLength(marker_length);
 	sldMbResLowmem->setStepLength(1);
 	sldMbResLowmem->setId("sldMbResLowmem");
@@ -175,8 +175,8 @@ void InitPanelRAM(const config_category& category)
 	sldMbResHighmem = new gcn::Slider(0, 8);
 	sldMbResHighmem->setSize(sld_width, SLIDER_HEIGHT);
 	sldMbResHighmem->setBaseColor(gui_base_color);
-	sldMbResHighmem->setBackgroundColor(gui_textbox_background_color);
-	sldMbResHighmem->setForegroundColor(gui_base_color);
+	sldMbResHighmem->setBackgroundColor(gui_background_color);
+	sldMbResHighmem->setForegroundColor(gui_foreground_color);
 	sldMbResHighmem->setMarkerLength(marker_length);
 	sldMbResHighmem->setStepLength(1);
 	sldMbResHighmem->setId("sldMbResHighmem");

@@ -6,6 +6,7 @@
 #include "amiberry_input.h"
 #include "filesys.h"
 #include "options.h"
+#include "registry.h"
 
 enum
 {
@@ -146,6 +147,7 @@ static const char* harddisk_filter[] = {".hdf", ".hdz", ".lha", ".zip", ".vhd", 
 static const char* archive_filter[] = { ".zip", ".7z", ".rar", ".lha", ".lzh", ".lzx", "\0" };
 static const char* cdfile_filter[] = { ".cue", ".ccd", ".iso", ".mds", ".nrg", ".chd", "\0" };
 static const char* whdload_filter[] = { ".lha", "\0" };
+static const char* statefile_filter[] = { ".uss", ".sav", "\0" };
 static string drivebridgeModes[] =
 {
 	"Normal",
@@ -168,31 +170,34 @@ using ConfigCategory = struct config_category
 };
 
 extern bool gui_running;
+extern gcn::Container* selectors;
+extern gcn::ScrollArea* selectorsScrollArea;
 extern ConfigCategory categories[];
-extern gcn::Gui* uae_gui;
 extern gcn::Container* gui_top;
+extern std::unique_ptr<gcn::Gui> uae_gui;
 
 // GUI Colors
 extern amiberry_gui_theme gui_theme;
 extern gcn::Color gui_base_color;
-extern gcn::Color gui_textbox_background_color;
+extern gcn::Color gui_background_color;
 extern gcn::Color gui_selector_inactive_color;
 extern gcn::Color gui_selector_active_color;
 extern gcn::Color gui_selection_color;
 extern gcn::Color gui_foreground_color;
 extern gcn::Color gui_font_color;
 
-extern gcn::SDLInput* gui_input;
+extern std::unique_ptr<gcn::SDLInput> gui_input;
 extern SDL_Surface* gui_screen;
 extern SDL_Joystick* gui_joystick;
 
-extern gcn::SDLGraphics* gui_graphics;
-extern gcn::SDLTrueTypeFont* gui_font;
+extern std::unique_ptr<gcn::SDLGraphics> gui_graphics;
+extern std::unique_ptr<gcn::SDLTrueTypeFont> gui_font;
 extern SDL_Texture* gui_texture;
 
 
 extern std::string current_dir;
 extern char last_loaded_config[MAX_DPATH];
+extern char last_active_config[MAX_DPATH];
 
 extern int quickstart_model;
 extern int quickstart_conf;
@@ -326,8 +331,13 @@ void ExitPanelWHDLoad();
 void RefreshPanelWHDLoad();
 bool HelpPanelWHDLoad(std::vector<std::string>& helptext);
 
+void InitPanelThemes(const struct config_category& category);
+void ExitPanelThemes();
+void RefreshPanelThemes();
+bool HelpPanelThemes(std::vector<std::string>& helptext);
+
 void refresh_all_panels();
-void focus_bug_workaround(gcn::Window* wnd);
+void focus_bug_workaround(const gcn::Window* wnd);
 void disable_resume();
 
 bool ShowMessage(const std::string& title, const std::string& line1, const std::string& line2, const std::string& line3,
@@ -401,12 +411,12 @@ extern void new_harddrive(int entry);
 
 extern void inithdcontroller(int ctype, int ctype_unit, int devtype, bool media);
 
-extern std::string screenshot_filename;
 extern int current_state_num;
 extern int delay_savestate_frame;
 extern int last_x;
 extern int last_y;
 
+extern struct romdata *scan_single_rom (const TCHAR *path);
 extern void update_gui_screen();
 extern void cap_fps(Uint64 start);
 extern long get_file_size(const std::string& filename);
@@ -421,6 +431,17 @@ extern void save_mapping_to_file(const std::string& mapping);
 extern void clear_whdload_prefs();
 extern void create_startup_sequence();
 
-extern void SetLastActiveConfig(const char* filename);
+extern std::vector<int> parse_color_string(const std::string& input);
+extern void save_theme(const std::string& theme_filename);
+extern void load_theme(const std::string& theme_filename);
+extern void load_default_theme();
+extern void apply_theme();
+extern void apply_theme_extras();
+
+extern void SetLastLoadedConfig(const char* filename);
+extern void set_last_active_config(const char* filename);
+extern void disk_selection(const int shortcut, uae_prefs* prefs);
+
+extern void addromfiles(UAEREG* fkey, gcn::DropDown* d, const TCHAR* path, int type1, int type2);
 
 #endif // GUI_HANDLING_H

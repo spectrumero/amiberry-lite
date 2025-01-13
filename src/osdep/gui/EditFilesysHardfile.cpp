@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include <guisan.hpp>
+
 #include <string>
 #include <guisan/sdl.hpp>
 #include "SelectorEntry.hpp"
@@ -16,6 +17,7 @@
 #include "gui_handling.h"
 #include "amiberry_gfx.h"
 #include "amiberry_input.h"
+#include "rommgr.h"
 
 enum
 {
@@ -59,12 +61,13 @@ static gcn::DropDown* cboUnit;
 static gcn::DropDown* cboHdfControllerType;
 static gcn::DropDown* cboHdfFeatureLevel;
 
-static gcn::TextField* txtHdfLine1;
-static gcn::TextField* txtHdfLine2;
+static gcn::TextField* txtHdfInfo;
+static gcn::TextField* txtHdfInfo2;
 
 static gcn::Button *cmdOK;
 static gcn::Button *cmdCancel;
 
+static gcn::CheckBox* chkManualGeometry;
 static gcn::Label *lblSurfaces;
 static gcn::TextField *txtSurfaces;
 static gcn::Label *lblReserved;
@@ -74,10 +77,43 @@ static gcn::TextField *txtSectors;
 static gcn::Label *lblBlocksize;
 static gcn::TextField *txtBlocksize;
 
-static void sethd(void)
+std::string txt1, txt2;
+
+static void sethardfilegeo()
+{
+	if (current_hfdlg.ci.geometry[0]) {
+		current_hfdlg.ci.physical_geometry = true;
+		chkManualGeometry->setSelected(true);
+		chkManualGeometry->setEnabled(false);
+		get_hd_geometry(&current_hfdlg.ci);
+	} else if (current_hfdlg.ci.chs) {
+		current_hfdlg.ci.physical_geometry = true;
+		chkManualGeometry->setSelected(true);
+		chkManualGeometry->setEnabled(false);
+		txtSectors->setEnabled(false);
+		txtSurfaces->setEnabled(false);
+		txtReserved->setEnabled(false);
+		txtBlocksize->setEnabled(false);
+	} else {
+		chkManualGeometry->setEnabled(true);
+	}
+}
+
+static void sethd()
 {
 	const bool rdb = is_hdf_rdb();
-	const bool enablegeo = !rdb;
+	const bool physgeo = (rdb && chkManualGeometry->isSelected()) || current_hfdlg.ci.chs;
+	const bool enablegeo = (!rdb || (physgeo && current_hfdlg.ci.geometry[0] == 0)) && !current_hfdlg.ci.chs;
+	const struct expansionromtype *ert = get_unit_expansion_rom(current_hfdlg.ci.controller_type);
+	if (ert && current_hfdlg.ci.controller_unit >= 8) {
+		if (!_tcscmp(ert->name, _T("a2091"))) {
+			current_hfdlg.ci.unit_feature_level = HD_LEVEL_SASI_CHS;
+		} else if (!_tcscmp(ert->name, _T("a2090a"))) {
+			current_hfdlg.ci.unit_feature_level = HD_LEVEL_SCSI_1;
+		}
+	}
+	if (!physgeo)
+		current_hfdlg.ci.physical_geometry = false;
 	txtSectors->setEnabled(enablegeo);
 	txtSurfaces->setEnabled(enablegeo);
 	txtReserved->setEnabled(enablegeo);
@@ -99,15 +135,18 @@ static void sethardfiletypes()
 	cboHdfFeatureLevel->setSelected(current_hfdlg.ci.unit_feature_level);
 }
 
-static void sethardfile(void)
+static void sethardfile()
 {
 	std::string rootdir, filesys, strdevname;
 	char tmp[32];
 
+	sethardfilegeo();
+
 	auto ide = current_hfdlg.ci.controller_type >= HD_CONTROLLER_TYPE_IDE_FIRST && current_hfdlg.ci.controller_type <= HD_CONTROLLER_TYPE_IDE_LAST;
 	bool scsi = current_hfdlg.ci.controller_type >= HD_CONTROLLER_TYPE_SCSI_FIRST && current_hfdlg.ci.controller_type <= HD_CONTROLLER_TYPE_SCSI_LAST;
 	auto rdb = is_hdf_rdb();
-	auto disables = !rdb || (rdb && current_hfdlg.ci.controller_type == HD_CONTROLLER_TYPE_UAE);
+	bool physgeo = rdb && chkManualGeometry->isSelected();
+	auto disables = !rdb || current_hfdlg.ci.controller_type == HD_CONTROLLER_TYPE_UAE;
 	bool rdsk = current_hfdlg.rdb;
 
 	sethd();
@@ -134,6 +173,10 @@ static void sethardfile(void)
 	chkDoNotMount->setSelected(!ISAUTOMOUNT(&current_hfdlg.ci));
 	chkVirtBootable->setEnabled(disables);
 	chkDoNotMount->setEnabled(disables);
+	chkVirtBootable->setVisible(!disables);
+	chkDoNotMount->setVisible(!disables);
+	txtBootPri->setVisible(!disables);
+	chkManualGeometry->setVisible(!rdb);
 	if (rdb)
 	{
 		chkRdbMode->setEnabled(!rdsk);
@@ -144,6 +187,9 @@ static void sethardfile(void)
 		chkRdbMode->setEnabled(true);
 		chkRdbMode->setSelected(false);
 	}
+	if (!rdb) {
+		chkManualGeometry->setSelected(false);
+	}
 	auto selIndex = 0;
 	for (auto i = 0; i < controller.size(); ++i) {
 		if (controller[i].type == current_hfdlg.ci.controller_type)
@@ -152,6 +198,16 @@ static void sethardfile(void)
 	cboController->setSelected(selIndex);
 	cboUnit->setSelected(current_hfdlg.ci.controller_unit);
 	sethardfiletypes();
+}
+
+static void set_phys_cyls()
+{
+	if (chkManualGeometry->isSelected()) {
+		int v = (current_hfdlg.ci.pheads * current_hfdlg.ci.psecs * current_hfdlg.ci.blocksize);
+		current_hfdlg.ci.pcyls = (int)(v ? current_hfdlg.size / v : 0);
+		current_hfdlg.ci.physical_geometry = true;
+		txtReserved->setText(std::to_string(current_hfdlg.ci.pcyls));
+	}
 }
 
 static gcn::StringListModel controllerListModel;
@@ -183,7 +239,9 @@ public:
                 strncpy(current_hfdlg.ci.geometry, tmp.c_str(), sizeof(current_hfdlg.ci.geometry) - 1);
                 current_hfdlg.ci.geometry[sizeof(current_hfdlg.ci.geometry) - 1] = '\0';
 				sethardfile();
-				updatehdfinfo(true, false, false);
+				updatehdfinfo(true, false, false, txt1, txt2);
+				txtHdfInfo->setText(txt1);
+				txtHdfInfo2->setText(txt2);
 			}
 			wndEditFilesysHardfile->requestModalFocus();
 		}
@@ -206,7 +264,9 @@ public:
 				strncpy(current_hfdlg.ci.filesys, tmp.c_str(), sizeof(current_hfdlg.ci.filesys) - 1);
 				current_hfdlg.ci.filesys[sizeof(current_hfdlg.ci.filesys) - 1] = '\0';
 				sethardfile();
-				updatehdfinfo(true, false, false);
+				updatehdfinfo(true, false, false, txt1, txt2);
+				txtHdfInfo->setText(txt1);
+				txtHdfInfo2->setText(txt2);
 			}
 			wndEditFilesysHardfile->requestModalFocus();
 		}
@@ -232,8 +292,13 @@ public:
 				
 				if (current_hfdlg.ci.devname[0] == 0)
 					CreateDefaultDevicename(current_hfdlg.ci.devname);
-				
+
 				hardfile_testrdb(&current_hfdlg);
+				updatehdfinfo (true, true, false, txt1, txt2);
+				get_hd_geometry (&current_hfdlg.ci);
+				updatehdfinfo (false, false, false, txt1, txt2);
+				txtHdfInfo->setText(txt1);
+				txtHdfInfo2->setText(txt2);
 				sethardfile();
 			}
 			wndEditFilesysHardfile->requestModalFocus();
@@ -304,6 +369,14 @@ public:
 			}
 			sethardfile();
 		}
+		else if (actionEvent.getSource() == chkManualGeometry)
+		{
+			current_hfdlg.ci.physical_geometry = chkManualGeometry->isSelected();
+			updatehdfinfo(true, false, false, txt1, txt2);
+			txtHdfInfo->setText(txt1);
+			txtHdfInfo2->setText(txt2);
+			sethardfile();
+		}
 		else
 		{
 			if (actionEvent.getSource() == cmdOK)
@@ -352,31 +425,43 @@ public:
 
 		}
 		else if (event.getSource() == txtSurfaces) {
-			p = &current_hfdlg.ci.surfaces;
+			p = chkManualGeometry->isSelected() ? &current_hfdlg.ci.pheads : &current_hfdlg.ci.surfaces;
 			v = *p;
 			*p = atoi(txtSurfaces->getText().c_str());
 			if (v != *p) {
-				updatehdfinfo(true, false, false);
+				set_phys_cyls();
+				updatehdfinfo(true, false, false, txt1, txt2);
+				txtHdfInfo->setText(txt1);
+				txtHdfInfo2->setText(txt2);
 				chkRdbMode->setSelected(!is_hdf_rdb());
 			}
 
 		}
 		else if (event.getSource() == txtReserved) {
-			p = &current_hfdlg.ci.reserved;
+			p = chkManualGeometry->isSelected() ? &current_hfdlg.ci.pcyls : &current_hfdlg.ci.reserved;
 			v = *p;
 			*p = atoi(txtReserved->getText().c_str());
 			if (v != *p) {
-				updatehdfinfo(true, false, false);
+				if (chkManualGeometry->isSelected())
+				{
+					current_hfdlg.ci.physical_geometry = true;
+				}
+				updatehdfinfo(true, false, false, txt1, txt2);
+				txtHdfInfo->setText(txt1);
+				txtHdfInfo2->setText(txt2);
 				chkRdbMode->setSelected(!is_hdf_rdb());
 			}
 
 		}
 		else if (event.getSource() == txtSectors) {
-			p = &current_hfdlg.ci.sectors;
+			p = chkManualGeometry->isSelected() ? &current_hfdlg.ci.psecs : &current_hfdlg.ci.sectors;
 			v = *p;
 			*p = atoi(txtSectors->getText().c_str());
 			if (v != *p) {
-				updatehdfinfo(true, false, false);
+				set_phys_cyls();
+				updatehdfinfo(true, false, false, txt1, txt2);
+				txtHdfInfo->setText(txt1);
+				txtHdfInfo2->setText(txt2);
 				chkRdbMode->setSelected(!is_hdf_rdb());
 			}
 
@@ -385,7 +470,11 @@ public:
 			v = current_hfdlg.ci.blocksize;
 			current_hfdlg.ci.blocksize = atoi(txtBlocksize->getText().c_str());
 			if (v != current_hfdlg.ci.blocksize)
-				updatehdfinfo(true, false, false);
+			{
+				updatehdfinfo(true, false, false, txt1, txt2);
+				txtHdfInfo->setText(txt1);
+				txtHdfInfo2->setText(txt2);
+			}
 		}
 	}
 };
@@ -400,6 +489,7 @@ static void InitEditFilesysHardfile()
 	wndEditFilesysHardfile->setForegroundColor(gui_foreground_color);
 	wndEditFilesysHardfile->setCaption("Hardfile settings");
 	wndEditFilesysHardfile->setTitleBarHeight(TITLEBAR_HEIGHT);
+	wndEditFilesysHardfile->setMovable(false);
 
 	filesysHardfileActionListener = new FilesysHardfileActionListener();
 	filesysHardfileFocusListener = new FilesysHardfileFocusListener();
@@ -410,7 +500,7 @@ static void InitEditFilesysHardfile()
 	txtHfPath->setSize(500, TEXTFIELD_HEIGHT);
 	txtHfPath->setId("txtHdfPath");
 	txtHfPath->setBaseColor(gui_base_color);
-	txtHfPath->setBackgroundColor(gui_textbox_background_color);
+	txtHfPath->setBackgroundColor(gui_background_color);
 	txtHfPath->setForegroundColor(gui_foreground_color);
 
 	cmdHfPath = new gcn::Button("...");
@@ -426,7 +516,7 @@ static void InitEditFilesysHardfile()
 	txtHfGeometry->setSize(500, TEXTFIELD_HEIGHT);
 	txtHfGeometry->setId("txtHdfGeometry");
 	txtHfGeometry->setBaseColor(gui_base_color);
-	txtHfGeometry->setBackgroundColor(gui_textbox_background_color);
+	txtHfGeometry->setBackgroundColor(gui_background_color);
 	txtHfGeometry->setForegroundColor(gui_foreground_color);
 
 	cmdHfGeometry = new gcn::Button("...");
@@ -442,7 +532,7 @@ static void InitEditFilesysHardfile()
 	txtHfFilesys->setSize(500, TEXTFIELD_HEIGHT);
 	txtHfFilesys->setId("txtHdfFilesys");
 	txtHfFilesys->setBaseColor(gui_base_color);
-	txtHfFilesys->setBackgroundColor(gui_textbox_background_color);
+	txtHfFilesys->setBackgroundColor(gui_background_color);
 	txtHfFilesys->setForegroundColor(gui_foreground_color);
 
 	cmdHfFilesys = new gcn::Button("...");
@@ -458,7 +548,7 @@ static void InitEditFilesysHardfile()
 	txtDevice->setId("txtHdfDev");
 	txtDevice->setSize(100, TEXTFIELD_HEIGHT);
 	txtDevice->setBaseColor(gui_base_color);
-	txtDevice->setBackgroundColor(gui_textbox_background_color);
+	txtDevice->setBackgroundColor(gui_background_color);
 	txtDevice->setForegroundColor(gui_foreground_color);
 	txtDevice->addFocusListener(filesysHardfileFocusListener);
 
@@ -468,35 +558,42 @@ static void InitEditFilesysHardfile()
 	txtBootPri->setId("txtHdfBootPri");
 	txtBootPri->setSize(40, TEXTFIELD_HEIGHT);
 	txtBootPri->setBaseColor(gui_base_color);
-	txtBootPri->setBackgroundColor(gui_textbox_background_color);
+	txtBootPri->setBackgroundColor(gui_background_color);
 	txtBootPri->setForegroundColor(gui_foreground_color);
 	txtBootPri->addFocusListener(filesysHardfileFocusListener);
 
 	chkReadWrite = new gcn::CheckBox("Read/Write", true);
 	chkReadWrite->setId("chkHdfRW");
 	chkReadWrite->setBaseColor(gui_base_color);
-	chkReadWrite->setBackgroundColor(gui_textbox_background_color);
+	chkReadWrite->setBackgroundColor(gui_background_color);
 	chkReadWrite->setForegroundColor(gui_foreground_color);
 	chkReadWrite->addActionListener(filesysHardfileActionListener);
 
 	chkVirtBootable = new gcn::CheckBox("Bootable", true);
 	chkVirtBootable->setId("hdfAutoboot");
 	chkVirtBootable->setBaseColor(gui_base_color);
-	chkVirtBootable->setBackgroundColor(gui_textbox_background_color);
+	chkVirtBootable->setBackgroundColor(gui_background_color);
 	chkVirtBootable->setForegroundColor(gui_foreground_color);
 	chkVirtBootable->addActionListener(filesysHardfileActionListener);
+
+	chkManualGeometry = new gcn::CheckBox("Manual geometry", false);
+	chkManualGeometry->setId("chkHdfManualGeometry");
+	chkManualGeometry->setBaseColor(gui_base_color);
+	chkManualGeometry->setBackgroundColor(gui_background_color);
+	chkManualGeometry->setForegroundColor(gui_foreground_color);
+	chkManualGeometry->addActionListener(filesysHardfileActionListener);
 
 	chkDoNotMount = new gcn::CheckBox("Do not mount");
 	chkDoNotMount->setId("chkHdfDoNotMount");
 	chkDoNotMount->setBaseColor(gui_base_color);
-	chkDoNotMount->setBackgroundColor(gui_textbox_background_color);
+	chkDoNotMount->setBackgroundColor(gui_background_color);
 	chkDoNotMount->setForegroundColor(gui_foreground_color);
 	chkDoNotMount->addActionListener(filesysHardfileActionListener);
 
 	chkRdbMode = new gcn::CheckBox("Full drive/RDB mode", false);
 	chkRdbMode->setId("chkHdfRDB");
 	chkRdbMode->setBaseColor(gui_base_color);
-	chkRdbMode->setBackgroundColor(gui_textbox_background_color);
+	chkRdbMode->setBackgroundColor(gui_background_color);
 	chkRdbMode->setForegroundColor(gui_foreground_color);
 	chkRdbMode->addActionListener(filesysHardfileActionListener);
 
@@ -505,7 +602,7 @@ static void InitEditFilesysHardfile()
 	cboController = new gcn::DropDown(&controllerListModel);
 	cboController->setSize(250, DROPDOWN_HEIGHT);
 	cboController->setBaseColor(gui_base_color);
-	cboController->setBackgroundColor(gui_textbox_background_color);
+	cboController->setBackgroundColor(gui_background_color);
 	cboController->setForegroundColor(gui_foreground_color);
 	cboController->setSelectionColor(gui_selection_color);
 	cboController->setId("cboHdfController");
@@ -514,7 +611,7 @@ static void InitEditFilesysHardfile()
 	cboUnit = new gcn::DropDown(&unitListModel);
 	cboUnit->setSize(80, DROPDOWN_HEIGHT);
 	cboUnit->setBaseColor(gui_base_color);
-	cboUnit->setBackgroundColor(gui_textbox_background_color);
+	cboUnit->setBackgroundColor(gui_background_color);
 	cboUnit->setForegroundColor(gui_foreground_color);
 	cboUnit->setSelectionColor(gui_selection_color);
 	cboUnit->setId("cboHdfUnit");
@@ -523,7 +620,7 @@ static void InitEditFilesysHardfile()
 	cboHdfControllerType = new gcn::DropDown(&hdfTypeListModel);
 	cboHdfControllerType->setSize(80, DROPDOWN_HEIGHT);
 	cboHdfControllerType->setBaseColor(gui_base_color);
-	cboHdfControllerType->setBackgroundColor(gui_textbox_background_color);
+	cboHdfControllerType->setBackgroundColor(gui_background_color);
 	cboHdfControllerType->setForegroundColor(gui_foreground_color);
 	cboHdfControllerType->setSelectionColor(gui_selection_color);
 	cboHdfControllerType->setId("cboHdfControllerType");
@@ -532,32 +629,32 @@ static void InitEditFilesysHardfile()
 	cboHdfFeatureLevel = new gcn::DropDown(&hdfFeatureLevelListModel);
 	cboHdfFeatureLevel->setSize(168, DROPDOWN_HEIGHT);
 	cboHdfFeatureLevel->setBaseColor(gui_base_color);
-	cboHdfFeatureLevel->setBackgroundColor(gui_textbox_background_color);
+	cboHdfFeatureLevel->setBackgroundColor(gui_background_color);
 	cboHdfFeatureLevel->setForegroundColor(gui_foreground_color);
 	cboHdfFeatureLevel->setSelectionColor(gui_selection_color);
 	cboHdfFeatureLevel->setId("cboHdfFeatureLevel");
 	cboHdfFeatureLevel->addActionListener(filesysHardfileActionListener);
 
-	txtHdfLine1 = new gcn::TextField();
-	txtHdfLine1->setSize(DIALOG_WIDTH - DISTANCE_BORDER * 2, TEXTFIELD_HEIGHT);
-	txtHdfLine1->setBaseColor(gui_base_color);
-	txtHdfLine1->setBackgroundColor(gui_textbox_background_color);
-	txtHdfLine1->setForegroundColor(gui_foreground_color);
-	txtHdfLine1->setEnabled(false);
+	txtHdfInfo = new gcn::TextField();
+	txtHdfInfo->setSize(DIALOG_WIDTH - DISTANCE_BORDER * 2, TEXTFIELD_HEIGHT);
+	txtHdfInfo->setBaseColor(gui_base_color);
+	txtHdfInfo->setBackgroundColor(gui_background_color);
+	txtHdfInfo->setForegroundColor(gui_foreground_color);
+	txtHdfInfo->setEnabled(false);
 
-	txtHdfLine2 = new gcn::TextField();
-	txtHdfLine2->setSize(DIALOG_WIDTH - DISTANCE_BORDER * 2, TEXTFIELD_HEIGHT);
-	txtHdfLine2->setBaseColor(gui_base_color);
-	txtHdfLine2->setBackgroundColor(gui_textbox_background_color);
-	txtHdfLine2->setForegroundColor(gui_foreground_color);
-	txtHdfLine2->setEnabled(false);
+	txtHdfInfo2 = new gcn::TextField();
+	txtHdfInfo2->setSize(DIALOG_WIDTH - DISTANCE_BORDER * 2, TEXTFIELD_HEIGHT);
+	txtHdfInfo2->setBaseColor(gui_base_color);
+	txtHdfInfo2->setBackgroundColor(gui_background_color);
+	txtHdfInfo2->setForegroundColor(gui_foreground_color);
+	txtHdfInfo2->setEnabled(false);
 
 	lblSurfaces = new gcn::Label("Surfaces:");
 	lblSurfaces->setAlignment(gcn::Graphics::Right);
 	txtSurfaces = new gcn::TextField();
 	txtSurfaces->setSize(60, TEXTFIELD_HEIGHT);
 	txtSurfaces->setBaseColor(gui_base_color);
-	txtSurfaces->setBackgroundColor(gui_textbox_background_color);
+	txtSurfaces->setBackgroundColor(gui_background_color);
 	txtSurfaces->setForegroundColor(gui_foreground_color);
 	txtSurfaces->addFocusListener(filesysHardfileFocusListener);
 
@@ -566,7 +663,7 @@ static void InitEditFilesysHardfile()
 	txtReserved = new gcn::TextField();
 	txtReserved->setSize(60, TEXTFIELD_HEIGHT);
 	txtReserved->setBaseColor(gui_base_color);
-	txtReserved->setBackgroundColor(gui_textbox_background_color);
+	txtReserved->setBackgroundColor(gui_background_color);
 	txtReserved->setForegroundColor(gui_foreground_color);
 	txtReserved->addFocusListener(filesysHardfileFocusListener);
 
@@ -575,7 +672,7 @@ static void InitEditFilesysHardfile()
 	txtSectors = new gcn::TextField();
 	txtSectors->setSize(60, TEXTFIELD_HEIGHT);
 	txtSectors->setBaseColor(gui_base_color);
-	txtSectors->setBackgroundColor(gui_textbox_background_color);
+	txtSectors->setBackgroundColor(gui_background_color);
 	txtSectors->setForegroundColor(gui_foreground_color);
 	txtSectors->addFocusListener(filesysHardfileFocusListener);
 
@@ -584,7 +681,7 @@ static void InitEditFilesysHardfile()
 	txtBlocksize = new gcn::TextField();
 	txtBlocksize->setSize(60, TEXTFIELD_HEIGHT);
 	txtBlocksize->setBaseColor(gui_base_color);
-	txtBlocksize->setBackgroundColor(gui_textbox_background_color);
+	txtBlocksize->setBackgroundColor(gui_background_color);
 	txtBlocksize->setForegroundColor(gui_foreground_color);
 	txtBlocksize->addFocusListener(filesysHardfileFocusListener);
 
@@ -630,6 +727,7 @@ static void InitEditFilesysHardfile()
 
 	wndEditFilesysHardfile->add(lblBootPri, posX, posY);
 	wndEditFilesysHardfile->add(txtBootPri, posX + lblBootPri->getWidth() + 8, posY);
+	wndEditFilesysHardfile->add(chkManualGeometry, txtBootPri->getX() + txtBootPri->getWidth() + DISTANCE_NEXT_X * 4, posY);
 	posY += txtBootPri->getHeight() + DISTANCE_NEXT_Y;
 
 	posX = txtDevice->getX();
@@ -665,9 +763,9 @@ static void InitEditFilesysHardfile()
 
 	posY = cboController->getY() + cboController->getHeight() + DISTANCE_NEXT_Y;
 
-	wndEditFilesysHardfile->add(txtHdfLine1, DISTANCE_BORDER, posY);
-	posY += txtHdfLine1->getHeight() + DISTANCE_NEXT_Y;
-	wndEditFilesysHardfile->add(txtHdfLine2, DISTANCE_BORDER, posY);
+	wndEditFilesysHardfile->add(txtHdfInfo, DISTANCE_BORDER, posY);
+	posY += txtHdfInfo->getHeight() + DISTANCE_NEXT_Y;
+	wndEditFilesysHardfile->add(txtHdfInfo2, DISTANCE_BORDER, posY);
 
 	wndEditFilesysHardfile->add(cmdOK);
 	wndEditFilesysHardfile->add(cmdCancel);
@@ -706,14 +804,15 @@ static void ExitEditFilesysHardfile()
 	delete chkVirtBootable;
 	delete chkDoNotMount;
 	delete chkRdbMode;
+	delete chkManualGeometry;
 
 	delete lblController;
 	delete cboController;
 	delete cboUnit;
 	delete cboHdfControllerType;
 	delete cboHdfFeatureLevel;
-	delete txtHdfLine1;
-	delete txtHdfLine2;
+	delete txtHdfInfo;
+	delete txtHdfInfo2;
 
 	delete lblSurfaces;
 	delete txtSurfaces;
@@ -1017,7 +1116,6 @@ bool EditFilesysHardfile(const int unit_no)
 	const AmigaMonitor* mon = &AMonitors[0];
 
 	mountedinfo mi{};
-	uaedev_config_data *uci;
 
 	dialogResult = false;
 	dialogFinished = false;
@@ -1048,7 +1146,7 @@ bool EditFilesysHardfile(const int unit_no)
 
 	if (unit_no >= 0)
 	{
-		uci = &changed_prefs.mountconfig[unit_no];
+		uaedev_config_data* uci = &changed_prefs.mountconfig[unit_no];
 		get_filesys_unitconfig(&changed_prefs, unit_no, &mi);
 
 		current_hfdlg.forcedcylinders = uci->ci.highcyl;
@@ -1061,7 +1159,10 @@ bool EditFilesysHardfile(const int unit_no)
 		fileSelected = false;
 	}
 
-	updatehdfinfo(true, false, false);
+	chkManualGeometry->setSelected(current_hfdlg.ci.physical_geometry);
+	updatehdfinfo(true, false, false, txt1, txt2);
+	txtHdfInfo->setText(txt1);
+	txtHdfInfo2->setText(txt2);
 	sethardfile();
 
 	// Prepare the screen once

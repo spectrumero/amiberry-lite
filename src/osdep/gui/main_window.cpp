@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <algorithm>
+#include <dpi_handler.hpp>
 
 #include <guisan.hpp>
 #include <SDL_image.h>
@@ -95,6 +96,8 @@ ConfigCategory categories[] = {
 	},
 	{"WHDLoad", "drive.ico", nullptr, nullptr, InitPanelWHDLoad, ExitPanelWHDLoad, RefreshPanelWHDLoad, HelpPanelWHDLoad},
 
+	{"Themes", "amigainfo.ico", nullptr, nullptr, InitPanelThemes, ExitPanelThemes, RefreshPanelThemes, HelpPanelThemes},
+
 	{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}
 };
 
@@ -133,34 +136,35 @@ SDL_Event gui_event;
 SDL_Event touch_event;
 SDL_Texture* gui_texture;
 SDL_Rect gui_renderQuad;
+SDL_Rect gui_window_rect{0, 0, GUI_WIDTH, GUI_HEIGHT};
 
 /*
 * Gui SDL stuff we need
 */
-gcn::SDLInput* gui_input;
-gcn::SDLGraphics* gui_graphics;
-gcn::SDLImageLoader* gui_imageLoader;
-gcn::SDLTrueTypeFont* gui_font;
+std::unique_ptr<gcn::SDLInput> gui_input;
+std::unique_ptr<gcn::SDLGraphics> gui_graphics;
+std::unique_ptr<gcn::SDLImageLoader> gui_imageLoader;
+std::unique_ptr<gcn::SDLTrueTypeFont> gui_font;
 
 /*
 * Gui stuff we need
 */
-gcn::Gui* uae_gui;
 gcn::Container* gui_top;
 gcn::Container* selectors;
 gcn::ScrollArea* selectorsScrollArea;
+std::unique_ptr<gcn::Gui> uae_gui;
 
 // GUI Colors
 gcn::Color gui_base_color;
-gcn::Color gui_textbox_background_color;
+gcn::Color gui_background_color;
 gcn::Color gui_selector_inactive_color;
 gcn::Color gui_selector_active_color;
 gcn::Color gui_selection_color;
 gcn::Color gui_foreground_color;
 gcn::Color gui_font_color;
 
-gcn::FocusHandler* focusHdl;
-gcn::Widget* activeWidget;
+std::unique_ptr<gcn::FocusHandler> focusHdl;
+std::unique_ptr<gcn::Widget> activeWidget;
 
 // Main buttons
 gcn::Button* cmdQuit;
@@ -209,7 +213,7 @@ void gui_restart()
 	gui_running = false;
 }
 
-void focus_bug_workaround(gcn::Window* wnd)
+void focus_bug_workaround(const gcn::Window* wnd)
 {
 	// When modal dialog opens via mouse, the dialog will not
 	// have the focus unless there is a mouse click. We simulate the click...
@@ -244,7 +248,7 @@ void cap_fps(Uint64 start)
 	const auto elapsed_ms = static_cast<float>(end - start) / static_cast<float>(SDL_GetPerformanceFrequency()) * 1000.0f;
 
 	const int refresh_rate = std::clamp(sdl_mode.refresh_rate, 50, 60);
-	const float frame_time = 1000.0f / refresh_rate;
+	const float frame_time = 1000.0f / static_cast<float>(refresh_rate);
 	const float delay_time = frame_time - elapsed_ms;
 
 	if (delay_time > 0.0f)
@@ -300,8 +304,8 @@ void amiberry_gui_init()
 	{
 		write_log("Creating Amiberry GUI window...\n");
         Uint32 mode;
-        if (!kmsdrm_detected)
-        {
+		if (!kmsdrm_detected)
+		{
 			// Only enable Windowed mode if we're running under x11
 			mode = SDL_WINDOW_RESIZABLE;
 		}
@@ -323,19 +327,19 @@ void amiberry_gui_init()
         if (amiberry_options.rotation_angle == 0 || amiberry_options.rotation_angle == 180)
         {
 			mon->gui_window = SDL_CreateWindow("Amiberry GUI",
-				SDL_WINDOWPOS_CENTERED,
-				SDL_WINDOWPOS_CENTERED,
-				GUI_WIDTH * amiberry_options.window_scaling,
-				GUI_HEIGHT * amiberry_options.window_scaling,
+				gui_window_rect.x != 0 ? gui_window_rect.x : SDL_WINDOWPOS_CENTERED,
+				gui_window_rect.y != 0 ? gui_window_rect.y : SDL_WINDOWPOS_CENTERED,
+				gui_window_rect.w,
+				gui_window_rect.h,
 				mode);
         }
         else
         {
 			mon->gui_window = SDL_CreateWindow("Amiberry GUI",
-				SDL_WINDOWPOS_CENTERED,
-				SDL_WINDOWPOS_CENTERED,
-				GUI_HEIGHT * amiberry_options.window_scaling,
-				GUI_WIDTH * amiberry_options.window_scaling,
+				gui_window_rect.y != 0 ? gui_window_rect.y : SDL_WINDOWPOS_CENTERED,
+				gui_window_rect.x != 0 ? gui_window_rect.x : SDL_WINDOWPOS_CENTERED,
+				gui_window_rect.h,
+				gui_window_rect.w,
 				mode);
         }
         check_error_sdl(mon->gui_window == nullptr, "Unable to create window:");
@@ -349,7 +353,7 @@ void amiberry_gui_init()
 	}
 	else if (kmsdrm_detected)
 	{
-		SDL_SetWindowSize(mon->gui_window, GUI_WIDTH * amiberry_options.window_scaling, GUI_HEIGHT * amiberry_options.window_scaling);
+		SDL_SetWindowSize(mon->gui_window, GUI_WIDTH, GUI_HEIGHT);
 	}
 
 	if (mon->gui_renderer == nullptr)
@@ -357,11 +361,18 @@ void amiberry_gui_init()
 		mon->gui_renderer = SDL_CreateRenderer(mon->gui_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 		check_error_sdl(mon->gui_renderer == nullptr, "Unable to create a renderer:");
 	}
+	DPIHandler::set_render_scale(mon->gui_renderer);
 
-	// make the scaled rendering look smoother (linear scaling).
-	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-	// Disable integer scaling for the GUI
-	SDL_RenderSetIntegerScale(mon->gui_renderer, SDL_FALSE);
+	auto render_scale_quality = "linear";
+	bool integer_scale = false;
+
+#ifdef __MACH__
+	render_scale_quality = "nearest";
+	integer_scale = true;
+#endif
+
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, render_scale_quality);
+	SDL_RenderSetIntegerScale(mon->gui_renderer, integer_scale ? SDL_TRUE : SDL_FALSE);
 
 	gui_texture = SDL_CreateTexture(mon->gui_renderer, gui_screen->format->format, SDL_TEXTUREACCESS_STREAMING, gui_screen->w,
 									gui_screen->h);
@@ -381,35 +392,23 @@ void amiberry_gui_init()
 	// Create helpers for GUI framework
 	//-------------------------------------------------
 
-	gui_imageLoader = new gcn::SDLImageLoader();
+	gui_imageLoader = std::make_unique<gcn::SDLImageLoader>();
 	gui_imageLoader->setRenderer(mon->gui_renderer);
 
 	// The ImageLoader in use is static and must be set to be
 	// able to load images
-	gcn::Image::setImageLoader(gui_imageLoader);
-	gui_graphics = new gcn::SDLGraphics();
+	gcn::Image::setImageLoader(gui_imageLoader.get());
+	gui_graphics = std::make_unique<gcn::SDLGraphics>();
 	// Set the target for the graphics object to be the screen.
 	// In other words, we will draw to the screen.
 	// Note, any surface will do, it doesn't have to be the screen.
 	gui_graphics->setTarget(gui_screen);
-	gui_input = new gcn::SDLInput();
-	uae_gui = new gcn::Gui();
-	uae_gui->setGraphics(gui_graphics);
-	uae_gui->setInput(gui_input);
+	gui_input = std::make_unique<gcn::SDLInput>();
 }
 
 void amiberry_gui_halt()
 {
 	AmigaMonitor* mon = &AMonitors[0];
-
-	delete uae_gui;
-	uae_gui = nullptr;
-	delete gui_imageLoader;
-	gui_imageLoader = nullptr;
-	delete gui_input;
-	gui_input = nullptr;
-	delete gui_graphics;
-	gui_graphics = nullptr;
 
 	if (gui_screen != nullptr)
 	{
@@ -439,12 +438,32 @@ void check_input()
 
 	auto got_event = 0;
 	didata* did = &di_joystick[0];
-	didata* existing_did = nullptr;
+	didata* existing_did;
 	
 	while (SDL_PollEvent(&gui_event))
 	{
 		switch (gui_event.type)
 		{
+		case SDL_WINDOWEVENT:
+			if (gui_event.window.windowID == SDL_GetWindowID(mon->gui_window))
+			{
+				switch (gui_event.window.event)
+				{
+				case SDL_WINDOWEVENT_MOVED:
+					gui_window_rect.x = gui_event.window.data1;
+					gui_window_rect.y = gui_event.window.data2;
+					break;
+				case SDL_WINDOWEVENT_RESIZED:
+					gui_window_rect.w = gui_event.window.data1;
+					gui_window_rect.h = gui_event.window.data2;
+					break;
+				default: 
+					break;
+				}
+			}
+			got_event = 1;
+			break;
+		
 		case SDL_QUIT:
 			got_event = 1;
 			//-------------------------------------------------
@@ -596,18 +615,18 @@ void check_input()
 						if (handle_navigation(DIRECTION_RIGHT))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_RIGHT);
-						break;
 					}
-					if (gui_event.jaxis.value < -joystick_dead_zone && last_x != -1)
+					else if (gui_event.jaxis.value < -joystick_dead_zone && last_x != -1)
 					{
 						last_x = -1;
 						if (handle_navigation(DIRECTION_LEFT))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_LEFT);
-						break;
 					}
-					if (gui_event.jaxis.value > -joystick_dead_zone && gui_event.jaxis.value < joystick_dead_zone)
+					else if (gui_event.jaxis.value > -joystick_dead_zone && gui_event.jaxis.value < joystick_dead_zone)
+					{
 						last_x = 0;
+					}
 				}
 				else if (gui_event.jaxis.axis == SDL_CONTROLLER_AXIS_LEFTY)
 				{
@@ -617,28 +636,45 @@ void check_input()
 						if (handle_navigation(DIRECTION_UP))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_UP);
-						break;
 					}
-					if (gui_event.jaxis.value > joystick_dead_zone && last_y != 1)
+					else if (gui_event.jaxis.value > joystick_dead_zone && last_y != 1)
 					{
 						last_y = 1;
 						if (handle_navigation(DIRECTION_DOWN))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_DOWN);
-						break;
 					}
-					if (gui_event.jaxis.value > -joystick_dead_zone && gui_event.jaxis.value < joystick_dead_zone)
+					else if (gui_event.jaxis.value > -joystick_dead_zone && gui_event.jaxis.value < joystick_dead_zone)
+					{
 						last_y = 0;
+					}
 				}
 			}
 			break;
 
 		case SDL_KEYDOWN:
 			got_event = 1;
-			if (gui_event.key.keysym.sym == SDLK_RCTRL || gui_event.key.keysym.sym == SDLK_LCTRL) ctrl_state = true;
-			else if (gui_event.key.keysym.sym == SDLK_RSHIFT || gui_event.key.keysym.sym == SDLK_LSHIFT) shift_state = true;
-			else if (gui_event.key.keysym.sym == SDLK_RALT || gui_event.key.keysym.sym == SDLK_LALT) alt_state = true;
-			else if (gui_event.key.keysym.sym == SDLK_RGUI || gui_event.key.keysym.sym == SDLK_LGUI) win_state = true;
+			switch (gui_event.key.keysym.sym)
+			{
+			case SDLK_RCTRL:
+			case SDLK_LCTRL:
+				ctrl_state = true;
+				break;
+			case SDLK_RSHIFT:
+			case SDLK_LSHIFT:
+				shift_state = true;
+				break;
+			case SDLK_RALT:
+			case SDLK_LALT:
+				alt_state = true;
+				break;
+			case SDLK_RGUI:
+			case SDLK_LGUI:
+				win_state = true;
+				break;
+			default:
+				break;
+			}
 
 			if (gui_event.key.keysym.scancode == enter_gui_key.scancode)
 			{
@@ -672,9 +708,9 @@ void check_input()
 					//-------------------------------------------------
 					// Quit entire program via Q on keyboard
 					//-------------------------------------------------
-					focusHdl = gui_top->_getFocusHandler();
-					activeWidget = focusHdl->getFocused();
-					if (dynamic_cast<gcn::TextField*>(activeWidget) == nullptr)
+					focusHdl.reset(gui_top->_getFocusHandler());
+					activeWidget.reset(focusHdl->getFocused());
+					if (dynamic_cast<gcn::TextField*>(activeWidget.get()) == nullptr)
 					{
 						// ...but only if we are not in a Textfield...
 						uae_quit();
@@ -693,7 +729,6 @@ void check_input()
 					// Simulate press of enter when 'X' pressed
 					//------------------------------------------------
 					gui_event.key.keysym.sym = SDLK_RETURN;
-
 					gui_input->pushInput(gui_event); // Fire key down
 					gui_event.type = SDL_KEYUP; // and the key up
 					break;
@@ -729,44 +764,17 @@ void check_input()
 			}
 			break;
 
-		case SDL_FINGERDOWN:
-			got_event = 1;
-			memcpy(&touch_event, &gui_event, sizeof gui_event);
-			touch_event.type = SDL_MOUSEBUTTONDOWN;
-			touch_event.button.which = 0;
-			touch_event.button.button = SDL_BUTTON_LEFT;
-			touch_event.button.state = SDL_PRESSED;
-
-			touch_event.button.x = gui_graphics->getTarget()->w * int(gui_event.tfinger.x);
-			touch_event.button.y = gui_graphics->getTarget()->h * int(gui_event.tfinger.y);
-
-			gui_input->pushInput(touch_event);
-			break;
-
+	    case SDL_FINGERDOWN:
 		case SDL_FINGERUP:
-			got_event = 1;
-			memcpy(&touch_event, &gui_event, sizeof gui_event);
-			touch_event.type = SDL_MOUSEBUTTONUP;
-			touch_event.button.which = 0;
-			touch_event.button.button = SDL_BUTTON_LEFT;
-			touch_event.button.state = SDL_RELEASED;
-
-			touch_event.button.x = gui_graphics->getTarget()->w * int(gui_event.tfinger.x);
-			touch_event.button.y = gui_graphics->getTarget()->h * int(gui_event.tfinger.y);
-
-			gui_input->pushInput(touch_event);
-			break;
-
 		case SDL_FINGERMOTION:
 			got_event = 1;
 			memcpy(&touch_event, &gui_event, sizeof gui_event);
-			touch_event.type = SDL_MOUSEMOTION;
-			touch_event.motion.which = 0;
-			touch_event.motion.state = 0;
-
-			touch_event.motion.x = gui_graphics->getTarget()->w * int(gui_event.tfinger.x);
-			touch_event.motion.y = gui_graphics->getTarget()->h * int(gui_event.tfinger.y);
-
+			touch_event.type = (gui_event.type == SDL_FINGERDOWN) ? SDL_MOUSEBUTTONDOWN : (gui_event.type == SDL_FINGERUP) ? SDL_MOUSEBUTTONUP : SDL_MOUSEMOTION;
+			touch_event.button.which = 0;
+			touch_event.button.button = SDL_BUTTON_LEFT;
+			touch_event.button.state = (gui_event.type == SDL_FINGERDOWN) ? SDL_PRESSED : (gui_event.type == SDL_FINGERUP) ? SDL_RELEASED : 0;
+			touch_event.button.x = gui_graphics->getTarget()->w * static_cast<int>(gui_event.tfinger.x);
+			touch_event.button.y = gui_graphics->getTarget()->h * static_cast<int>(gui_event.tfinger.y);
 			gui_input->pushInput(touch_event);
 			break;
 
@@ -790,25 +798,31 @@ void check_input()
 
 		case SDL_KEYUP:
 			got_event = 1;
-			if (gui_event.key.keysym.sym == SDLK_RCTRL || gui_event.key.keysym.sym == SDLK_LCTRL) ctrl_state = false;
-			else if (gui_event.key.keysym.sym == SDLK_RSHIFT || gui_event.key.keysym.sym == SDLK_LSHIFT) shift_state = false;
-			else if (gui_event.key.keysym.sym == SDLK_RALT || gui_event.key.keysym.sym == SDLK_LALT) alt_state = false;
-			else if (gui_event.key.keysym.sym == SDLK_RGUI || gui_event.key.keysym.sym == SDLK_LGUI) win_state = false;
+			switch (gui_event.key.keysym.sym)
+			{
+			case SDLK_RCTRL:
+			case SDLK_LCTRL:
+				ctrl_state = false;
+				break;
+			case SDLK_RSHIFT:
+			case SDLK_LSHIFT:
+				shift_state = false;
+				break;
+			case SDLK_RALT:
+			case SDLK_LALT:
+				alt_state = false;
+				break;
+			case SDLK_RGUI:
+			case SDLK_LGUI:
+				win_state = false;
+				break;
+			default:
+				break;
+			}
 			break;
-		case SDL_JOYBUTTONUP:
-		case SDL_CONTROLLERBUTTONUP:
-		case SDL_MOUSEBUTTONDOWN:
-		case SDL_MOUSEBUTTONUP:
-		case SDL_MOUSEMOTION:
-		case SDL_RENDER_TARGETS_RESET:
-		case SDL_RENDER_DEVICE_RESET:
-		case SDL_WINDOWEVENT:
-		case SDL_DISPLAYEVENT:
-		case SDL_SYSWMEVENT:
-			got_event = 1;
-			break;
-			
+
 		default:
+			got_event = 1;
 			break;
 		}
 
@@ -1000,15 +1014,19 @@ void gui_widgets_init()
 	int yPos;
 
 	//-------------------------------------------------
-	// Define base colors
+	// Create GUI
 	//-------------------------------------------------
-	gui_base_color = gui_theme.base_color;
-	gui_selector_inactive_color = gui_theme.selector_inactive;
-	gui_selector_active_color = gui_theme.selector_active;
-	gui_textbox_background_color = gui_theme.textbox_background;
-	gui_selection_color = gui_theme.selection_color;
-	gui_foreground_color = gui_theme.foreground_color;
-	gui_font_color = gui_theme.font_color;
+	uae_gui = std::make_unique<gcn::Gui>();
+	uae_gui->setGraphics(gui_graphics.get());
+	uae_gui->setInput(gui_input.get());
+
+	//-------------------------------------------------
+	// Initialize fonts
+	//-------------------------------------------------
+	TTF_Init();
+
+	load_theme(amiberry_options.gui_theme);
+	apply_theme();
 
 	//-------------------------------------------------
 	// Create container for main page
@@ -1019,45 +1037,6 @@ void gui_widgets_init()
 	gui_top->setBackgroundColor(gui_base_color);
 	gui_top->setForegroundColor(gui_foreground_color);
 	uae_gui->setTop(gui_top);
-
-	//-------------------------------------------------
-	// Initialize fonts
-	//-------------------------------------------------
-	TTF_Init();
-
-	try
-	{
-		// Check if the font_name contains the full path to the file (e.g. in /usr/share/fonts)
-		if (my_existsfile2(gui_theme.font_name.c_str()))
-		{
-			gui_font = new gcn::SDLTrueTypeFont(gui_theme.font_name, gui_theme.font_size);
-		}
-		else
-		{
-			// Try to open it from the data directory
-			std::string font = get_data_path();
-			font.append(gui_theme.font_name);
-			gui_font = new gcn::SDLTrueTypeFont(font, gui_theme.font_size);
-		}
-		gui_font->setAntiAlias(false);
-		gui_font->setColor(gui_font_color);
-	}
-	catch (gcn::Exception& e)
-	{
-		gui_running = false;
-		std::cout << e.getMessage() << '\n';
-		write_log("An error occurred while trying to open the GUI font! Exception: %s\n", e.getMessage().c_str());
-		abort();
-	}
-	catch (std::exception& ex)
-	{
-		gui_running = false;
-		cout << ex.what() << '\n';
-		write_log("An error occurred while trying to open the GUI font! Exception: %s\n", ex.what());
-		abort();
-	}
-
-	gcn::Widget::setGlobalFont(gui_font);
 
 	//--------------------------------------------------
 	// Create main buttons
@@ -1114,15 +1093,15 @@ void gui_widgets_init()
 	constexpr auto workAreaHeight = GUI_HEIGHT - 2 * DISTANCE_BORDER - BUTTON_HEIGHT - DISTANCE_NEXT_Y;
 	selectors = new gcn::Container();
 	selectors->setFrameSize(0);
-	selectors->setBaseColor(gui_selector_inactive_color);
+	selectors->setBaseColor(gui_base_color);
 	selectors->setBackgroundColor(gui_base_color);
 	selectors->setForegroundColor(gui_foreground_color);
 
 	constexpr auto selectorScrollAreaWidth = SELECTOR_WIDTH + 2;
 	selectorsScrollArea = new gcn::ScrollArea();
 	selectorsScrollArea->setContent(selectors);
-	selectorsScrollArea->setBaseColor(gui_selector_inactive_color);
-	selectorsScrollArea->setBackgroundColor(gui_selector_inactive_color);
+	selectorsScrollArea->setBaseColor(gui_base_color);
+	selectorsScrollArea->setBackgroundColor(gui_base_color);
 	selectorsScrollArea->setForegroundColor(gui_foreground_color);
 	selectorsScrollArea->setSize(selectorScrollAreaWidth, workAreaHeight);
 	selectorsScrollArea->setFrameSize(1);
@@ -1151,6 +1130,9 @@ void gui_widgets_init()
 	}
 
 	selectors->setSize(SELECTOR_WIDTH, selectorsHeight);
+
+	// These need to be called after the selectors have been created
+	apply_theme_extras();
 
 	//--------------------------------------------------
 	// Initialize panels
@@ -1215,11 +1197,7 @@ void gui_widgets_halt()
 	delete cmdRestart;
 	delete cmdStart;
 	delete cmdHelp;
-
 	delete mainButtonActionListener;
-
-	delete gui_font;
-	gui_font = nullptr;
 	delete gui_top;
 	gui_top = nullptr;
 }

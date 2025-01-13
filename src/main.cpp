@@ -6,6 +6,7 @@
 * Copyright 1995 Ed Hanway
 * Copyright 1995, 1996, 1997 Bernd Schmidt
 */
+#include <algorithm>
 #include <iostream>
 #include <cstdio>
 #include <cstdlib>
@@ -94,7 +95,7 @@ static TCHAR optionsfile[MAX_DPATH];
 static uae_u32 randseed;
 
 static uae_u32 xorshiftstate;
-static uae_u32 xorshift32(void)
+static uae_u32 xorshift32()
 {
 	uae_u32 x = xorshiftstate;
 	x ^= x << 13;
@@ -104,7 +105,7 @@ static uae_u32 xorshift32(void)
 	return xorshiftstate;
 }
 
-uae_u32 uaerand(void)
+uae_u32 uaerand()
 {
 	if (xorshiftstate == 0) {
 		xorshiftstate = randseed;
@@ -117,7 +118,7 @@ uae_u32 uaerand(void)
 	return r;
 }
 
-uae_u32 uaerandgetseed(void)
+uae_u32 uaerandgetseed()
 {
 	if (!randseed) {
 		randseed = 1;
@@ -211,8 +212,7 @@ void fixup_prefs_dimensions (struct uae_prefs *prefs)
 
 	for (int i = 0; i < 2; i++) {
 		struct apmode *ap = &prefs->gfx_apmode[i];
-		if (ap->gfx_backbuffers < 1)
-			ap->gfx_backbuffers = 1;
+		ap->gfx_backbuffers = std::max(ap->gfx_backbuffers, 1);
 		ap->gfx_vflip = 0;
 		ap->gfx_strobo = false;
 		if (ap->gfx_vsync) {
@@ -264,7 +264,7 @@ void fixup_cpu (struct uae_prefs *p)
 
 	if (p->cpu_model >= 68020 && p->cpuboard_type && p->address_space_24 && cpuboard_32bit(p)) {
 		error_log (_T("24-bit address space is not supported with selected accelerator board configuration."));
-		p->address_space_24 = 0;
+		p->address_space_24 = false;
 	}
 	if (p->cpu_model >= 68040 && p->address_space_24) {
 		error_log (_T("24-bit address space is not supported with 68040/060 configurations."));
@@ -311,8 +311,7 @@ void fixup_cpu (struct uae_prefs *p)
 				cpuboard_setboard(p,  BOARD_BLIZZARD, BOARD_BLIZZARD_SUB_PPC);
 			}
 		}
-		if (p->cpuboardmem1.size < 8 * 1024 * 1024)
-			p->cpuboardmem1.size = 8 * 1024 * 1024;
+		p->cpuboardmem1.size = std::max<uae_u32>(p->cpuboardmem1.size, 8 * 1024 * 1024);
 	}
 #endif
 
@@ -653,8 +652,7 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		}
 	} else if (p->cs_compatible == 0) {
 		if (p->cs_ide == IDE_A4000) {
-			if (p->cs_fatgaryrev < 0)
-				p->cs_fatgaryrev = 0;
+			p->cs_fatgaryrev = std::max(p->cs_fatgaryrev, 0);
 			if (p->cs_ramseyrev < 0)
 				p->cs_ramseyrev = 0x0f;
 		}
@@ -725,8 +723,7 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		}
 	}
 #endif
-	if (p->gfx_framerate < 1)
-		p->gfx_framerate = 1;
+	p->gfx_framerate = std::max(p->gfx_framerate, 1);
 	if (p->gfx_display_sections < 1) {
 		p->gfx_display_sections = 1;
 	} else if (p->gfx_display_sections > 99) {
@@ -747,8 +744,7 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		p->cs_ciaatod = p->ntscmode ? 2 : 1;
 
 	// PCem does not support max speed.
-	if (p->x86_speed_throttle < 0)
-		p->x86_speed_throttle = 0;
+	p->x86_speed_throttle = std::max<float>(p->x86_speed_throttle, 0);
 
 	built_in_chipset_prefs (p);
 	blkdev_fix_prefs (p);
@@ -821,7 +817,7 @@ void usage()
 	std::cout << " -f <file>                  Load a configuration file." << '\n';
 	std::cout << " --config <file>            " << '\n';
 	std::cout << " --model <Amiga Model>      Amiga model to emulate, from the QuickStart options." << '\n';
-	std::cout << "                            Available options are: A500, A500P, A1200, A4000, CD32 and CDTV.\n" <<
+	std::cout << "                            Available options are: A1000, A500, A500P, A600, A2000, A3000, A1200, A4000, CD32 and CDTV.\n" <<
 		'\n';
 	std::cout << " --autoload <file>          Load an .lha WHDLoad game or a CD32 CD image, using the WHDBooter." << '\n';
 	std::cout << " --cdimage <file>           Load the CD image provided when starting emulation." << '\n';
@@ -865,7 +861,7 @@ void usage()
 	std::cout << " -O <value>                 Set graphics specs." << '\n';
 	std::cout << " -H <value>                 Color mode." << '\n';
 	std::cout << " -o <amiberry cnf>=<value>  Set Amiberry configuration parameter with value." << '\n';
-	std::cout << "                            See: https://github.com/midwan/amiberry/wiki/Amiberry.conf-options" <<
+	std::cout << "                            See: https://github.com/BlitterStudio/amiberry/wiki/Amiberry.conf-options" <<
 		'\n';
 	std::cout << "\nExample 1:" << '\n';
 	std::cout << "amiberry --model A1200 -G" << '\n';
@@ -883,7 +879,7 @@ void usage()
 
 static void parse_cmdline_2 (int argc, TCHAR **argv)
 {
-	cfgfile_addcfgparam (0);
+	cfgfile_addcfgparam (nullptr);
 	for (auto i = 1; i < argc; i++) {
 		if (_tcsncmp(argv[i], _T("-cfgparam="), 10) == 0) {
 			cfgfile_addcfgparam(argv[i] + 10);
@@ -921,7 +917,7 @@ static void parse_diskswapper (const TCHAR *s)
 		p2 = _tcstok(p1, delim);
 		if (!p2)
 			break;
-		p1 = NULL;
+		p1 = nullptr;
 		if (num >= MAX_SPARE_DRIVES)
 			break;
 		if (!zfile_zopen (p2, diskswapper_cb, &num)) {
@@ -950,7 +946,7 @@ static TCHAR *parsetext (const TCHAR *s)
 static TCHAR *parsetextpath (const TCHAR *s)
 {
 	auto* const s2 = parsetext (s);
-	auto* const s3 = target_expand_environment (s2, NULL, 0);
+	auto* const s3 = target_expand_environment (s2, nullptr, 0);
 	xfree(s2);
 	return s3;
 }
@@ -966,7 +962,7 @@ std::string get_filename_extension(const TCHAR* filename)
 	return fName.substr(pos, fName.length());
 }
 
-extern void SetLastActiveConfig(const char* filename);
+extern void set_last_active_config(const char* filename);
 
 static void parse_cmdline (int argc, TCHAR **argv)
 {
@@ -1009,7 +1005,7 @@ static void parse_cmdline (int argc, TCHAR **argv)
 			}
 			loaded = true;
 		}
-		else if (_tcscmp(argv[i], _T("--model")) == 0 || _tcscmp(argv[i], _T("-m")) == 0) {
+		else if (_tcscmp(argv[i], _T("--model")) == 0) {
 			if (i + 1 == argc)
 				write_log(_T("Missing argument for '--model' option.\n"));
 			else
@@ -1022,6 +1018,22 @@ static void parse_cmdline (int argc, TCHAR **argv)
 				else if (_tcscmp(txt, _T("A500P")) == 0)
 				{
 					bip_a500plus(&currprefs, -1);
+				}
+				else if (_tcscmp(txt, _T("A600")) == 0)
+				{
+					bip_a600(&currprefs, -1);
+				}
+				else if (_tcscmp(txt, _T("A1000")) == 0)
+				{
+					bip_a1000(&currprefs, -1);
+				}
+				else if (_tcscmp(txt, _T("A2000")) == 0)
+				{
+					bip_a2000(&currprefs, 130);
+				}
+				else if (_tcscmp(txt, _T("A3000")) == 0)
+				{
+					bip_a3000(&currprefs, -1);
 				}
 				else if (_tcscmp(txt, _T("A1200")) == 0)
 				{
@@ -1047,9 +1059,24 @@ static void parse_cmdline (int argc, TCHAR **argv)
 			else
 			{
 				auto* const txt = parsetextpath(argv[++i]);
-				savestate_state = STATE_DORESTORE;
-				_tcscpy(savestate_fname, txt);
+#ifdef AMIBERRY
+				// We have a secondary check in Amiberry for the existence of the file
+				// This allows us to pass the filename without the full path, and it will
+				// check in the defined savesates directory as well for it.
+				if (my_existsfile2(txt))
+				{
+					savestate_state = STATE_DORESTORE;
+					_tcscpy(savestate_fname, txt);
+				}
+				else
+				{
+					get_savestate_path(savestate_fname, MAX_DPATH - 1);
+					strncat(savestate_fname, txt, MAX_DPATH - 1);
+					savestate_state = STATE_DORESTORE;
+				}
+				set_last_active_config(txt);
 				xfree(txt);
+#endif
 			}
 			loaded = true;
 		}
@@ -1130,7 +1157,25 @@ static void parse_cmdline (int argc, TCHAR **argv)
 				add_file_to_mru_list(lstMRUWhdloadList, std::string(txt));
 				whdload_prefs.whdload_filename = std::string(txt);
 				whdload_auto_prefs(&currprefs, txt);
-				SetLastActiveConfig(txt);
+				set_last_active_config(txt);
+			}
+			else if (_tcscmp(txt2.c_str(), ".uss") == 0)
+			{
+				write_log("Statefile... %s\n", txt);
+				if (my_existsfile2(txt))
+				{
+					savestate_state = STATE_DORESTORE;
+					_tcscpy(savestate_fname, txt);
+					currprefs.start_gui = false;
+				}
+				else
+				{
+					get_savestate_path(savestate_fname, MAX_DPATH - 1);
+					strncat(savestate_fname, txt, MAX_DPATH - 1);
+					savestate_state = STATE_DORESTORE;
+					currprefs.start_gui = false;
+				}
+				set_last_active_config(txt);
 			}
 			else if (_tcscmp(txt2.c_str(), ".cue") == 0
 				|| _tcscmp(txt2.c_str(), ".iso") == 0
@@ -1139,7 +1184,7 @@ static void parse_cmdline (int argc, TCHAR **argv)
 				write_log("CDTV/CD32... %s\n", txt);
 				add_file_to_mru_list(lstMRUCDList, std::string(txt));
 				cd_auto_prefs(&currprefs, txt);
-				SetLastActiveConfig(txt);
+				set_last_active_config(txt);
 			}
 			else if (_tcscmp(txt2.c_str(), ".adf") == 0
 				|| _tcscmp(txt2.c_str(), ".adz") == 0
@@ -1156,9 +1201,9 @@ static void parse_cmdline (int argc, TCHAR **argv)
 				std::string filename = p.filename().string();
 
 				std::string config_extension = "uae";
-				const std::size_t pos = filename.find_last_of(".");
+				const std::size_t pos = filename.find_last_of('.');
 				if (pos != std::string::npos) {
-					filename = filename.substr(0, pos) + "." + config_extension;
+					filename = filename.substr(0, pos).append(".").append(config_extension);
 				}
 				else {
 					// No extension found
@@ -1181,7 +1226,7 @@ static void parse_cmdline (int argc, TCHAR **argv)
 				{
 					write_log("No configuration file found for %s, inserting disk in DF0: with default settings\n", txt);
 					disk_insert(0, txt);
-					SetLastActiveConfig(txt);
+					set_last_active_config(txt);
 					currprefs.start_gui = false;
 				}
 			}
@@ -1398,7 +1443,7 @@ void download_rtb(const std::string& filename)
 	if (!file_exists(destination))
 	{
 		write_log("Downloading %s ...\n", destination.c_str());
-		const std::string url = "https://github.com/midwan/amiberry/blob/master/whdboot/save-data/Kickstarts/" + filename + "?raw=true";
+		const std::string url = "https://github.com/BlitterStudio/amiberry/blob/master/whdboot/save-data/Kickstarts/" + filename + "?raw=true";
 		download_file(url,  destination, false);
 	}
 }

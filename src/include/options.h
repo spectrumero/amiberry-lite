@@ -468,7 +468,7 @@ struct boardromconfig
 	int device_order;
 	struct romconfig roms[MAX_BOARD_ROMS];
 };
-#define MAX_RTG_BOARDS 1
+#define MAX_RTG_BOARDS 4
 struct rtgboardconfig
 {
 	int rtg_index;
@@ -595,7 +595,6 @@ struct whdload_slave
 struct whdload_options
 {
 	std::string whdload_filename;
-
 	std::string filename;
 	std::string game_name;
 	std::string sub_path;
@@ -882,6 +881,7 @@ struct uae_prefs
 	struct cdslot cdslots[MAX_TOTAL_SCSI_DEVICES];
 	TCHAR quitstatefile[MAX_DPATH];
 	TCHAR statefile[MAX_DPATH];
+	TCHAR statefile_path[MAX_DPATH];
 	TCHAR inprecfile[MAX_DPATH];
 	TCHAR trainerfile[MAX_DPATH];
 	bool inprec_autoplay;
@@ -1141,14 +1141,17 @@ extern bool is_error_log(void);
 
 extern void default_prefs(struct uae_prefs*, bool, int);
 extern void discard_prefs(struct uae_prefs*, int);
-extern void copy_prefs(struct uae_prefs* src, struct uae_prefs* dst);
-extern void copy_inputdevice_prefs(struct uae_prefs *src, struct uae_prefs *dst);
+extern void copy_prefs(const struct uae_prefs* src, struct uae_prefs* dst);
+extern void copy_inputdevice_prefs(const struct uae_prefs *src, struct uae_prefs *dst);
 
 #ifdef AMIBERRY
 extern int bip_a500(struct uae_prefs* p, int rom);
 extern int bip_a500plus(struct uae_prefs* p, int rom);
+extern int bip_a600(struct uae_prefs* p, int rom);
+extern int bip_a1000(struct uae_prefs* p, int rom);
 extern int bip_a1200(struct uae_prefs* p, int rom);
 extern int bip_a2000(struct uae_prefs* p, int rom);
+extern int bip_a3000(struct uae_prefs* p, int rom);
 extern int bip_a4000(struct uae_prefs* p, int rom);
 extern int bip_cd32(struct uae_prefs* p, int rom);
 extern int bip_cdtv(struct uae_prefs* p, int rom);
@@ -1262,7 +1265,7 @@ extern void hardfile_testrdb(struct hfdlg_vals* hdf);
 extern void default_tapedlg(struct tapedlg_vals* f);
 extern void default_fsvdlg(struct fsvdlg_vals* f);
 extern void default_hfdlg(struct hfdlg_vals* f, bool rdb);
-extern void updatehdfinfo(bool force, bool defaults, bool realdrive);
+extern void updatehdfinfo(bool force, bool defaults, bool realdrive, std::string& txtHdfInfo, std::string& txtHdfInfo2);
 
 #ifdef AMIBERRY
 struct amiberry_customised_layout
@@ -1297,7 +1300,7 @@ struct amiberry_gui_theme
 	gcn::Color base_color;
 	gcn::Color selector_inactive;
 	gcn::Color selector_active;
-	gcn::Color textbox_background;
+	gcn::Color background_color;
 	gcn::Color selection_color;
 	gcn::Color foreground_color;
 	std::string font_name;
@@ -1307,7 +1310,6 @@ struct amiberry_gui_theme
 
 struct amiberry_options
 {
-	float window_scaling = 1.0;
 	bool quickstart_start = true;
 	bool read_config_descriptions = true;
 	bool write_logfile = false;
@@ -1352,7 +1354,7 @@ struct amiberry_options
 	bool default_whd_writecache = false;
 	bool default_whd_quit_on_exit = false;
 	bool use_jst_instead_of_whd = false;
-	bool disable_shutdown_button = false;
+	bool disable_shutdown_button = true;
 	bool allow_display_settings_from_xml = true;
 	int default_soundcard = 0;
 	bool default_vkbd_enabled;
@@ -1362,15 +1364,7 @@ struct amiberry_options
 	char default_vkbd_style[128] = "Original";
 	int default_vkbd_transparency;
 	char default_vkbd_toggle[128] = "guide";
-	char gui_theme_font_name[128] = "AmigaTopaz.ttf";
-	int gui_theme_font_size = 15;
-	char gui_theme_base_color[128] = "170, 170, 170";
-	char gui_theme_selector_inactive[128] = "170, 170, 170";
-	char gui_theme_selector_active[128] = "103, 136, 187";
-	char gui_theme_textbox_background[128] = "220, 220, 220";
-	char gui_theme_selection_color[128] = "195, 217, 217";
-	char gui_theme_foreground_color[128] = "0, 0, 0";
-	char gui_theme_font_color[128] = "0, 0, 0";
+	char gui_theme[128] = "Default.theme";
 };
 
 extern struct amiberry_options amiberry_options;

@@ -92,8 +92,8 @@ static void InitShowMessage(const std::string& message)
 			mon->gui_window = SDL_CreateWindow("Amiberry GUI",
 				SDL_WINDOWPOS_CENTERED,
 				SDL_WINDOWPOS_CENTERED,
-				GUI_HEIGHT * amiberry_options.window_scaling,
-				GUI_WIDTH * amiberry_options.window_scaling,
+				GUI_HEIGHT,
+				GUI_WIDTH,
 				mode);
 		}
 		else
@@ -101,8 +101,8 @@ static void InitShowMessage(const std::string& message)
 			mon->gui_window = SDL_CreateWindow("Amiberry GUI",
 				SDL_WINDOWPOS_CENTERED,
 				SDL_WINDOWPOS_CENTERED,
-				GUI_WIDTH * amiberry_options.window_scaling,
-				GUI_HEIGHT * amiberry_options.window_scaling,
+				GUI_WIDTH,
+				GUI_HEIGHT,
 				mode);
 		}
 		check_error_sdl(mon->gui_window == nullptr, "Unable to create window:");
@@ -156,19 +156,19 @@ static void InitShowMessage(const std::string& message)
 
 	if (gui_graphics == nullptr)
 	{
-		gui_graphics = new gcn::SDLGraphics();
+		gui_graphics = std::make_unique<gcn::SDLGraphics>();
 		gui_graphics->setTarget(gui_screen);
 	}
 	if (gui_input == nullptr)
 	{
-		gui_input = new gcn::SDLInput();
+		gui_input = std::make_unique<gcn::SDLInput>();
 	}
 	if (uae_gui == nullptr)
 	{
 		halt_gui = true;
-		uae_gui = new gcn::Gui();
-		uae_gui->setGraphics(gui_graphics);
-		uae_gui->setInput(gui_input);
+		uae_gui = std::make_unique<gcn::Gui>();
+		uae_gui->setGraphics(gui_graphics.get());
+		uae_gui->setInput(gui_input.get());
 	}
 	if (gui_top == nullptr)
 	{
@@ -186,20 +186,8 @@ static void InitShowMessage(const std::string& message)
 	{
 		TTF_Init();
 
-		try
-		{
-			gui_font = new gcn::SDLTrueTypeFont(prefix_with_data_path(gui_theme.font_name), gui_theme.font_size);
-			gui_font->setAntiAlias(false);
-			gui_font->setColor(gui_font_color);
-		}
-		catch (exception& ex)
-		{
-			cout << ex.what() << '\n';
-			write_log("An error occurred while trying to open the GUI font! Exception: %s\n", ex.what());
-			abort();
-		}
-
-		gcn::Widget::setGlobalFont(gui_font);
+		load_theme(amiberry_options.gui_theme);
+		apply_theme();
 	}
 
 	wndShowMessage = new gcn::Window("Message");
@@ -209,6 +197,7 @@ static void InitShowMessage(const std::string& message)
 	wndShowMessage->setBackgroundColor(gui_base_color);
 	wndShowMessage->setForegroundColor(gui_foreground_color);
 	wndShowMessage->setTitleBarHeight(TITLEBAR_HEIGHT);
+	wndShowMessage->setMovable(false);
 
 	showMessageActionListener = new ShowMessageActionListener();
 
@@ -270,14 +259,6 @@ static void ExitShowMessage()
 
 	if (halt_gui)
 	{
-		delete uae_gui;
-		uae_gui = nullptr;
-		delete gui_input;
-		gui_input = nullptr;
-		delete gui_graphics;
-		gui_graphics = nullptr;
-		delete gui_font;
-		gui_font = nullptr;
 		delete gui_top;
 		gui_top = nullptr;
 

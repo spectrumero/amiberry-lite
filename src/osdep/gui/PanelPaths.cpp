@@ -84,8 +84,8 @@ public:
 	{
 		char tmp[MAX_DPATH];
 		std::string path;
-
-		if (actionEvent.getSource() == cmdSystemROMs)
+		const auto source = actionEvent.getSource();
+		if (source == cmdSystemROMs)
 		{
 			get_rom_path(tmp, MAX_DPATH);
 			path = SelectFolder("Folder for System ROMs", std::string(tmp));
@@ -95,7 +95,7 @@ public:
 			}
 			cmdSystemROMs->requestFocus();
 		}
-		else if (actionEvent.getSource() == cmdConfigPath)
+		else if (source == cmdConfigPath)
 		{
 			get_configuration_path(tmp, MAX_DPATH);
 			path = SelectFolder("Folder for configuration files", std::string(tmp));
@@ -105,7 +105,7 @@ public:
 			}
 			cmdConfigPath->requestFocus();
 		}
-		else if (actionEvent.getSource() == cmdNvramFiles)
+		else if (source == cmdNvramFiles)
 		{
 			get_nvram_path(tmp, MAX_DPATH);
 			path = SelectFolder("Folder for NVRAM files", std::string(tmp));
@@ -115,7 +115,7 @@ public:
 			}
 			cmdNvramFiles->requestFocus();
 		}
-		else if (actionEvent.getSource() == cmdPluginFiles)
+		else if (source == cmdPluginFiles)
 		{
 			path = SelectFolder("Folder for Plugins", get_plugins_path());
 			if (!path.empty())
@@ -124,7 +124,7 @@ public:
 			}
 			cmdPluginFiles->requestFocus();
 		}
-		else if (actionEvent.getSource() == cmdScreenshotFiles)
+		else if (source == cmdScreenshotFiles)
 		{
 			path = SelectFolder("Folder for Screenshot files", get_screenshot_path());
 			if (!path.empty())
@@ -133,7 +133,7 @@ public:
 			}
 			cmdScreenshotFiles->requestFocus();
 		}
-		else if (actionEvent.getSource() == cmdStateFiles)
+		else if (source == cmdStateFiles)
 		{
 			get_savestate_path(tmp, MAX_DPATH);
 			path = SelectFolder("Folder for Save state files", std::string(tmp));
@@ -143,7 +143,7 @@ public:
 			}
 			cmdStateFiles->requestFocus();
 		}
-		else if (actionEvent.getSource() == cmdControllersPath)
+		else if (source == cmdControllersPath)
 		{
 			path = SelectFolder("Folder for controller files", get_controllers_path());
 			if (!path.empty())
@@ -152,8 +152,7 @@ public:
 			}
 			cmdControllersPath->requestFocus();
 		}
-
-		else if (actionEvent.getSource() == cmdRetroArchFile)
+		else if (source == cmdRetroArchFile)
 		{
 			const char* filter[] = {"retroarch.cfg", "\0"};
 			path = SelectFile("Select RetroArch Config File", get_retroarch_file(), filter);
@@ -163,8 +162,7 @@ public:
 			}
 			cmdRetroArchFile->requestFocus();
 		}
-
-		else if (actionEvent.getSource() == cmdWHDBootPath)
+		else if (source == cmdWHDBootPath)
 		{
 			path = SelectFolder("Folder for WHDBoot files", get_whdbootpath());
 			if (!path.empty())
@@ -173,8 +171,7 @@ public:
 			}
 			cmdWHDBootPath->requestFocus();
 		}
-
-		else if (actionEvent.getSource() == cmdWHDLoadArchPath)
+		else if (source == cmdWHDLoadArchPath)
 		{
 			path = SelectFolder("Folder for WHDLoad Archives", get_whdload_arch_path());
 			if (!path.empty())
@@ -183,8 +180,7 @@ public:
 			}
 			cmdWHDLoadArchPath->requestFocus();
 		}
-
-		else if (actionEvent.getSource() == cmdFloppyPath)
+		else if (source == cmdFloppyPath)
 		{
 			path = SelectFolder("Folder for Floppies", get_floppy_path());
 			if (!path.empty())
@@ -193,8 +189,7 @@ public:
 			}
 			cmdFloppyPath->requestFocus();
 		}
-
-		else if (actionEvent.getSource() == cmdCDPath)
+		else if (source == cmdCDPath)
 		{
 			path = SelectFolder("Folder for CD-ROMs", get_cdrom_path());
 			if (!path.empty())
@@ -203,8 +198,7 @@ public:
 			}
 			cmdCDPath->requestFocus();
 		}
-
-		else if (actionEvent.getSource() == cmdHardDrivesPath)
+		else if (source == cmdHardDrivesPath)
 		{
 			path = SelectFolder("Folder for Hard Drives", get_harddrive_path());
 			if (!path.empty())
@@ -213,8 +207,7 @@ public:
 			}
 			cmdHardDrivesPath->requestFocus();
 		}
-
-		else if (actionEvent.getSource() == cmdLogfilePath)
+		else if (source == cmdLogfilePath)
 		{
 			const char* filter[] = { ".log", "\0" };
 			path = SelectFile("Select Amiberry Log file", get_logfile_path(), filter, true);
@@ -259,7 +252,7 @@ class RescanROMsButtonActionListener : public gcn::ActionListener
 public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
-		RescanROMs();
+		scan_roms(true);
 		SymlinkROMs();
 
 		import_joysticks();
@@ -314,12 +307,22 @@ public:
 		//  download WHDLoad executable
 		destination = prefix_with_whdboot_path("WHDLoad");
 		write_log("Downloading %s ...\n", destination.c_str());
-		download_file("https://github.com/midwan/amiberry/blob/master/whdboot/WHDLoad?raw=true", destination, false);
+		download_file("https://github.com/BlitterStudio/amiberry/blob/master/whdboot/WHDLoad?raw=true", destination, false);
+
+		//  download JST executable
+		destination = prefix_with_whdboot_path("JST");
+		write_log("Downloading %s ...\n", destination.c_str());
+		download_file("https://github.com/BlitterStudio/amiberry/blob/master/whdboot/JST?raw=true", destination, false);
+
+		//  download AmiQuit executable
+		destination = prefix_with_whdboot_path("AmiQuit");
+		write_log("Downloading %s ...\n", destination.c_str());
+		download_file("https://github.com/BlitterStudio/amiberry/blob/master/whdboot/AmiQuit?raw=true", destination, false);
 
 		//  download boot-data.zip
 		destination = prefix_with_whdboot_path("boot-data.zip");
 		write_log("Downloading %s ...\n", destination.c_str());
-		download_file("https://github.com/midwan/amiberry/blob/master/whdboot/boot-data.zip?raw=true", destination, false);
+		download_file("https://github.com/BlitterStudio/amiberry/blob/master/whdboot/boot-data.zip?raw=true", destination, false);
 
 		// download kickstart RTB files for maximum compatibility
 		download_rtb("kick33180.A500.RTB");
@@ -352,9 +355,7 @@ class DownloadControllerDbActionListener : public gcn::ActionListener
 public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
-		char config_path[MAX_DPATH];
-		get_configuration_path(config_path, MAX_DPATH);
-		auto destination = std::string(config_path);
+		std::string destination = get_controllers_path();
 		destination += "gamecontrollerdb.txt";
 		write_log("Downloading % ...\n", destination.c_str());
 		const auto* const url = "https://raw.githubusercontent.com/gabomdq/SDL_GameControllerDB/master/gamecontrollerdb.txt";
@@ -385,7 +386,7 @@ void InitPanelPaths(const config_category& category)
 	txtSystemROMs = new gcn::TextField();
 	txtSystemROMs->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtSystemROMs->setBaseColor(gui_base_color);
-	txtSystemROMs->setBackgroundColor(gui_textbox_background_color);
+	txtSystemROMs->setBackgroundColor(gui_background_color);
 	txtSystemROMs->setForegroundColor(gui_foreground_color);
 
 	cmdSystemROMs = new gcn::Button("...");
@@ -399,7 +400,7 @@ void InitPanelPaths(const config_category& category)
 	txtConfigPath = new gcn::TextField();
 	txtConfigPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtConfigPath->setBaseColor(gui_base_color);
-	txtConfigPath->setBackgroundColor(gui_textbox_background_color);
+	txtConfigPath->setBackgroundColor(gui_background_color);
 	txtConfigPath->setForegroundColor(gui_foreground_color);
 
 	cmdConfigPath = new gcn::Button("...");
@@ -414,7 +415,7 @@ void InitPanelPaths(const config_category& category)
 	txtNvramFiles->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtNvramFiles->setBaseColor(gui_base_color);
 	txtNvramFiles->setForegroundColor(gui_foreground_color);
-	txtNvramFiles->setBackgroundColor(gui_textbox_background_color);
+	txtNvramFiles->setBackgroundColor(gui_background_color);
 
 	cmdNvramFiles = new gcn::Button("...");
 	cmdNvramFiles->setId("cmdNvramFiles");
@@ -427,7 +428,7 @@ void InitPanelPaths(const config_category& category)
 	txtPluginFiles->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtPluginFiles->setBaseColor(gui_base_color);
 	txtPluginFiles->setForegroundColor(gui_foreground_color);
-	txtPluginFiles->setBackgroundColor(gui_textbox_background_color);
+	txtPluginFiles->setBackgroundColor(gui_background_color);
 
 	cmdPluginFiles = new gcn::Button("...");
 	cmdPluginFiles->setId("cmdPluginFiles");
@@ -440,7 +441,7 @@ void InitPanelPaths(const config_category& category)
 	txtScreenshotFiles->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtScreenshotFiles->setBaseColor(gui_base_color);
 	txtScreenshotFiles->setForegroundColor(gui_foreground_color);
-	txtScreenshotFiles->setBackgroundColor(gui_textbox_background_color);
+	txtScreenshotFiles->setBackgroundColor(gui_background_color);
 
 	cmdScreenshotFiles = new gcn::Button("...");
 	cmdScreenshotFiles->setId("cmdScreenshotFiles");
@@ -453,7 +454,7 @@ void InitPanelPaths(const config_category& category)
 	txtStateFiles->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtStateFiles->setBaseColor(gui_base_color);
 	txtStateFiles->setForegroundColor(gui_foreground_color);
-	txtStateFiles->setBackgroundColor(gui_textbox_background_color);
+	txtStateFiles->setBackgroundColor(gui_background_color);
 
 	cmdStateFiles = new gcn::Button("...");
 	cmdStateFiles->setId("cmdStateFiles");
@@ -466,7 +467,7 @@ void InitPanelPaths(const config_category& category)
 	txtControllersPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtControllersPath->setBaseColor(gui_base_color);
 	txtControllersPath->setForegroundColor(gui_foreground_color);
-	txtControllersPath->setBackgroundColor(gui_textbox_background_color);
+	txtControllersPath->setBackgroundColor(gui_background_color);
 
 	cmdControllersPath = new gcn::Button("...");
 	cmdControllersPath->setId("cmdControllersPath");
@@ -480,7 +481,7 @@ void InitPanelPaths(const config_category& category)
 	txtRetroArchFile->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtRetroArchFile->setBaseColor(gui_base_color);
 	txtRetroArchFile->setForegroundColor(gui_foreground_color);
-	txtRetroArchFile->setBackgroundColor(gui_textbox_background_color);
+	txtRetroArchFile->setBackgroundColor(gui_background_color);
 
 	cmdRetroArchFile = new gcn::Button("...");
 	cmdRetroArchFile->setId("cmdRetroArchFile");
@@ -494,7 +495,7 @@ void InitPanelPaths(const config_category& category)
 	txtWHDBootPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtWHDBootPath->setBaseColor(gui_base_color);
 	txtWHDBootPath->setForegroundColor(gui_foreground_color);
-	txtWHDBootPath->setBackgroundColor(gui_textbox_background_color);
+	txtWHDBootPath->setBackgroundColor(gui_background_color);
 
 	cmdWHDBootPath = new gcn::Button("...");
 	cmdWHDBootPath->setId("cmdWHDBootPath");
@@ -508,7 +509,7 @@ void InitPanelPaths(const config_category& category)
 	txtWHDLoadArchPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtWHDLoadArchPath->setBaseColor(gui_base_color);
 	txtWHDLoadArchPath->setForegroundColor(gui_foreground_color);
-	txtWHDLoadArchPath->setBackgroundColor(gui_textbox_background_color);
+	txtWHDLoadArchPath->setBackgroundColor(gui_background_color);
 
 	cmdWHDLoadArchPath = new gcn::Button("...");
 	cmdWHDLoadArchPath->setId("cmdWHDLoadArchPath");
@@ -522,7 +523,7 @@ void InitPanelPaths(const config_category& category)
 	txtFloppyPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtFloppyPath->setBaseColor(gui_base_color);
 	txtFloppyPath->setForegroundColor(gui_foreground_color);
-	txtFloppyPath->setBackgroundColor(gui_textbox_background_color);
+	txtFloppyPath->setBackgroundColor(gui_background_color);
 
 	cmdFloppyPath = new gcn::Button("...");
 	cmdFloppyPath->setId("cmdFloppyPath");
@@ -536,7 +537,7 @@ void InitPanelPaths(const config_category& category)
 	txtCDPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtCDPath->setBaseColor(gui_base_color);
 	txtCDPath->setForegroundColor(gui_foreground_color);
-	txtCDPath->setBackgroundColor(gui_textbox_background_color);
+	txtCDPath->setBackgroundColor(gui_background_color);
 
 	cmdCDPath = new gcn::Button("...");
 	cmdCDPath->setId("cmdCDPath");
@@ -549,7 +550,7 @@ void InitPanelPaths(const config_category& category)
 	txtHardDrivesPath = new gcn::TextField();
 	txtHardDrivesPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtHardDrivesPath->setBaseColor(gui_base_color);
-	txtHardDrivesPath->setBackgroundColor(gui_textbox_background_color);
+	txtHardDrivesPath->setBackgroundColor(gui_background_color);
 	txtHardDrivesPath->setForegroundColor(gui_foreground_color);
 
 	cmdHardDrivesPath = new gcn::Button("...");
@@ -563,13 +564,13 @@ void InitPanelPaths(const config_category& category)
 	chkEnableLogging = new gcn::CheckBox("Enable logging", true);
 	chkEnableLogging->setId("chkEnableLogging");
 	chkEnableLogging->setBaseColor(gui_base_color);
-	chkEnableLogging->setBackgroundColor(gui_textbox_background_color);
+	chkEnableLogging->setBackgroundColor(gui_background_color);
 	chkEnableLogging->setForegroundColor(gui_foreground_color);
 	chkEnableLogging->addActionListener(enableLoggingActionListener);
 	chkLogToConsole = new gcn::CheckBox("Log to console", false);
 	chkLogToConsole->setId("chkLogToConsole");
 	chkLogToConsole->setBaseColor(gui_base_color);
-	chkLogToConsole->setBackgroundColor(gui_textbox_background_color);
+	chkLogToConsole->setBackgroundColor(gui_background_color);
 	chkLogToConsole->setForegroundColor(gui_foreground_color);
 	chkLogToConsole->addActionListener(enableLoggingActionListener);
 	
@@ -577,7 +578,7 @@ void InitPanelPaths(const config_category& category)
 	txtLogfilePath = new gcn::TextField();
 	txtLogfilePath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
 	txtLogfilePath->setBaseColor(gui_base_color);
-	txtLogfilePath->setBackgroundColor(gui_textbox_background_color);
+	txtLogfilePath->setBackgroundColor(gui_background_color);
 	txtLogfilePath->setForegroundColor(gui_foreground_color);
 
 	cmdLogfilePath = new gcn::Button("...");
@@ -590,7 +591,7 @@ void InitPanelPaths(const config_category& category)
 	int yPos = DISTANCE_BORDER;
 	grpPaths->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
 	grpPaths->setBaseColor(gui_base_color);
-	grpPaths->setBackgroundColor(gui_textbox_background_color);
+	grpPaths->setBackgroundColor(gui_background_color);
 
 	grpPaths->add(lblSystemROMs, DISTANCE_BORDER, yPos);
 	yPos += lblSystemROMs->getHeight() + DISTANCE_NEXT_Y / 2;
@@ -675,7 +676,7 @@ void InitPanelPaths(const config_category& category)
 	scrlPaths = new gcn::ScrollArea(grpPaths);
 	scrlPaths->setId("scrlPaths");
 	scrlPaths->setBaseColor(gui_base_color);
-	scrlPaths->setBackgroundColor(gui_textbox_background_color);
+	scrlPaths->setBackgroundColor(gui_background_color);
 	scrlPaths->setForegroundColor(gui_foreground_color);
 	scrlPaths->setWidth(category.panel->getWidth() - DISTANCE_BORDER * 2);
 	scrlPaths->setHeight(category.panel->getHeight() - TEXTFIELD_HEIGHT * 6);
@@ -701,7 +702,7 @@ void InitPanelPaths(const config_category& category)
 	cmdRescanROMs->addActionListener(rescanROMsButtonActionListener);
 
 	downloadXMLButtonActionListener = new DownloadXMLButtonActionListener();
-	cmdDownloadXML = new gcn::Button("Update WHDLoad XML");
+	cmdDownloadXML = new gcn::Button("Update WHDBooter files");
 	cmdDownloadXML->setSize(cmdDownloadXML->getWidth() + DISTANCE_BORDER, BUTTON_HEIGHT);
 	cmdDownloadXML->setBaseColor(gui_base_color);
 	cmdDownloadXML->setForegroundColor(gui_foreground_color);
@@ -867,16 +868,18 @@ bool HelpPanelPaths(std::vector<std::string>& helptext)
         helptext.emplace_back("for Amiberry to pick them up. This button will regenerate the amiberry.conf file");
         helptext.emplace_back("if it's missing, and will be populated with the default values.");
         helptext.emplace_back(" ");
-        helptext.emplace_back("The \"Update WHDLoad XML\" button will attempt to download the latest XML used for");
-        helptext.emplace_back("the WHDLoad-booter functionality of Amiberry. It requires an internet connection to");
-        helptext.emplace_back("work, obviously. The downloaded file will be stored in the default location of");
+        helptext.emplace_back("The \"Update WHDBooter files\" button will attempt to download the latest XML used for");
+        helptext.emplace_back("the WHDLoad-booter functionality of Amiberry, along with all related files in the");
+		helptext.emplace_back("\"whdboot\" directory. It requires an internet connection and write permissions in the");
+        helptext.emplace_back("destination directory. The downloaded XML file will be stored in the default location");
         helptext.emplace_back("(whdboot/game-data/whdload_db.xml). Once the file is successfully downloaded, you");
         helptext.emplace_back("will also get a dialog box informing you about the details. A backup copy of the");
         helptext.emplace_back("existing whdload_db.xml is made (whdboot/game-data/whdload_db.bak), to preserve any");
-        helptext.emplace_back("custom edits that may have been made.");
-        helptext.emplace_back(" ");
+        helptext.emplace_back("custom edits that may have been made. The rest of the files will be updated with the");
+        helptext.emplace_back("latest version from the repository.");
+		helptext.emplace_back(" ");
         helptext.emplace_back("The \"Update Controllers DB\" button will attempt to download the latest version of");
-        helptext.emplace_back("the bundled gamecontrollerdb.txt file, to be stored in the Configuration files path.");
+        helptext.emplace_back("the bundled gamecontrollerdb.txt file, to be stored in the Controllers files path.");
         helptext.emplace_back("The file contains the \"official\" mappings for recognized controllers by SDL2 itself.");
         helptext.emplace_back("Please note that this is separate from the user-configurable gamecontrollerdb_user.txt");
         helptext.emplace_back("file, which is contained in the Controllers path. That file is never overwritten, and");
@@ -887,7 +890,7 @@ bool HelpPanelPaths(std::vector<std::string>& helptext)
         helptext.emplace_back(" ");
         helptext.emplace_back("The paths for Amiberry resources include;");
         helptext.emplace_back(" ");
-		helptext.emplace_back("- System ROMs: The Amiga Kickstart files are by default located under 'kickstarts'.");
+		helptext.emplace_back("- System ROMs: The Amiga Kickstart files are by default located under 'roms'.");
 		helptext.emplace_back("  After changing the location of the Kickstart ROMs, or adding any additional ROMs, ");
 		helptext.emplace_back("  click on the \"Rescan\" button to refresh the list of the available ROMs. Please");
 		helptext.emplace_back("  note that MT-32 ROM files may also reside here, or in a \"mt32-roms\" directory");

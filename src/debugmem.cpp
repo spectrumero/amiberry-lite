@@ -352,10 +352,11 @@ static void debugreport(struct debugmemdata *dm, uaecptr addr, int rwi, int size
 		!(state & (DEBUGMEM_ALLOCATED | DEBUGMEM_INUSE)) ? 'I' : (state & DEBUGMEM_WRITE) ? 'W' : 'R',
 		(state & DEBUGMEM_WRITE) ? '*' : (state & DEBUGMEM_INITIALIZED) ? '+' : '-',
 		dm->unused_start, PAGE_SIZE - dm->unused_end - 1);
-
+#ifdef DEBUGGER
 	if (peekdma_data.mask && (peekdma_data.addr == addr || (size > 2 && peekdma_data.addr + 2 == addr))) {
 		console_out_f(_T("DMA DAT=%04x PTR=%04x\n"), peekdma_data.reg, peekdma_data.ptrreg);
 	}
+#endif
 
 	debugmem_break(1);
 }
@@ -1076,8 +1077,10 @@ void debugmem_trap(uaecptr stack)
 	}
 	console_out_f(_T("\n"));
 	// always return back to faulted instruction
+#ifdef DEBUGGER
 	put_long(stack + 6, regs.instruction_pc_user_exception);
 	debugmem_break_pc(13, regs.instruction_pc_user_exception, 2);
+#endif
 }
 
 static struct debugmemallocs *debugmem_reserve(uaecptr addr, uae_u32 size, uae_u32 parentid)
@@ -1136,14 +1139,14 @@ static bool loadcodefiledata(struct debugcodefile *cf)
 	struct zfile *zf = zfile_fopen(fpath, _T("rb"));
 	if (!zf) {
 		console_out_f(_T("Couldn't open source file '%s'\n"), fpath);
-		return NULL;
+		return false;
 	}
 	int length;
 	uae_u8 *data2 = zfile_getdata(zf, 0, -1, &length);
 	if (!data2) {
 		zfile_fclose(zf);
 		console_out_f(_T("Couldn't read source file '%s'\n"), fpath);
-		return NULL;
+		return false;
 	}
 	uae_u8 *data = xcalloc(uae_u8, length + 1);
 	memcpy(data, data2, length);
@@ -1291,7 +1294,7 @@ static void parse_stabs(void)
 					// wsl path
 					if (!_tcsnicmp(path, _T("/mnt/"), 5)) {
 						TCHAR path2[MAX_DPATH];
-						_stprintf(path2, _T("%c:/%s"), path[5], path + 7);
+						_sntprintf(path2, sizeof path2, _T("%c:/%s"), path[5], path + 7);
 						f = s->string;
 						p = path2;
 					}
@@ -1299,21 +1302,21 @@ static void parse_stabs(void)
 					// cygwin path
 					if (!_tcsnicmp(path, _T("/cygdrive/"), 10)) {
 						TCHAR path2[MAX_DPATH];
-						_stprintf(path2, _T("%c:/%s"), path[10], path + 12);
+						_sntprintf(path2, sizeof path2, _T("%c:/%s"), path[10], path + 12);
 						f = s->string;
 						p = path2;
 					}
 				} else if (pm == 3) {
 					// pathprefix + path + file
 					if (pathprefix) {
-						_stprintf(path2, _T("%s%s"), pathprefix, path);
+						_sntprintf(path2, sizeof path2, _T("%s%s"), pathprefix, path);
 						f = s->string;
 						p = path2;
 					}
 				} else if (pm == 2) {
 					// pathprefix + file
 					if (pathprefix) {
-						_stprintf(path2, _T("%s%s"), pathprefix, s->string);
+						_sntprintf(path2, sizeof path2, _T("%s%s"), pathprefix, s->string);
 						f = path2;
 					}
 				} else if (pm == 1) {
@@ -1910,10 +1913,10 @@ uaecptr debugmem_reloc(uaecptr exeaddress, uae_u32 len, uaecptr dbgaddress, uae_
 	}
 
 	console_out_f(_T("Executable load complete.\n"));
-
+#ifdef DEBUGGER
 	uaecptr execbase = get_long_debug(4);
 	exec_thistask = get_real_address(execbase + 276);
-
+#endif
 	setchipbank(true);
 	chipmem_setindirect();
 	debugger_scan_libraries();
@@ -1934,6 +1937,7 @@ static uae_char *gethunktext(uae_u8 *p, uae_char *namebuf, int len)
 
 static void scan_library_list(uaecptr v, int *cntp)
 {
+#ifdef DEBUGGER
 	while ((v = get_long_debug(v))) {
 		uae_u32 v2;
 		uae_u8 *p;
@@ -1951,19 +1955,19 @@ static void scan_library_list(uaecptr v, int *cntp)
 		for (int i = 0; i < libnamecnt; i++) {
 			struct libname *name = &libnames[i];
 			char n[256];
-			sprintf(n, "%s.library", name->aname);
+			_sntprintf(n, sizeof n, "%s.library", name->aname);
 			if (!strcmp((char*)p, n)) {
 				name->base = v;
 				found = name;
 				break;
 			}
-			sprintf(n, "%s.device", name->aname);
+			_sntprintf(n, sizeof n, "%s.device", name->aname);
 			if (!strcmp((char*)p, n)) {
 				name->base = v;
 				found = name;
 				break;
 			}
-			sprintf(n, "%s.resource", name->aname);
+			_sntprintf(n, sizeof n, "%s.resource", name->aname);
 			if (!strcmp((char*)p, n)) {
 				name->base = v;
 				found = name;
@@ -1975,10 +1979,12 @@ static void scan_library_list(uaecptr v, int *cntp)
 			//console_out_f(_T("%08x = '%s'\n"), found->base, found->name);
 		}
 	}
+#endif
 }
 
 void debugger_scan_libraries(void)
 {
+#ifdef DEBUGGER
 	if (!libnamecnt)
 		return;
 	uaecptr v = get_long_debug(4);
@@ -1990,6 +1996,7 @@ void debugger_scan_libraries(void)
 	scan_library_list(v + 350, &cnt);
 	scan_library_list(v + 336, &cnt);
 	console_out_f(_T("%d libraries matched with library symbols.\n"), cnt);
+#endif
 }
 
 
@@ -2002,7 +2009,7 @@ bool debugger_get_library_symbol(uaecptr base, uaecptr addr, TCHAR *out)
 				struct libsymbol *lvo = &libsymbols[j];
 				if (lvo->lib == name) {
 					if (lvo->value == addr) {
-						_stprintf(out, _T("%s/%s"), name->name, lvo->name);
+						_sntprintf(out, sizeof out, _T("%s/%s"), name->name, lvo->name);
 						return true;
 					}
 				}
@@ -3598,7 +3605,7 @@ bool debugmem_get_symbol_value(const TCHAR *name, uae_u32 *valp)
 {
 	for (int i = 0; i < libnamecnt; i++) {
 		struct libname *libname = &libnames[i];
-		int lnlen = _tcslen(libname->name);
+		int lnlen = uaetcslen(libname->name);
 		// "libname/lvoname"?
 		if (!_tcsnicmp(name, libname->name, lnlen) && _tcslen(name) > lnlen + 1 && name[lnlen] == '/') {
 			for (int j = 0; j < libsymbolcnt; j++) {
@@ -3607,8 +3614,10 @@ bool debugmem_get_symbol_value(const TCHAR *name, uae_u32 *valp)
 					if (!_tcsicmp(name + lnlen + 1, lvo->name)) {
 						uaecptr addr = libname->base + lvo->value;
 						// JMP xxxxxxxx?
+#ifdef DEBUGGER
 						if (get_word_debug(addr) == 0x4ef9)
 							addr = get_long_debug(addr + 2);
+#endif
 						*valp = addr;
 						return true;
 					}
@@ -3682,11 +3691,11 @@ int debugmem_get_symbol(uaecptr addr, TCHAR *out, int maxsize)
 				}
 #endif
 
-				if (maxsize > _tcslen(txt)) {
+				if (maxsize > uaetcslen(txt)) {
 					if (found)
 						_tcscat(out, _T("\n"));
 					_tcscat(out, txt);
-					maxsize -= _tcslen(txt);
+					maxsize -= uaetcslen(txt);
 				}
 			}
 			found = i + 1;
@@ -3758,10 +3767,10 @@ int debugmem_get_sourceline(uaecptr addr, TCHAR *out, int maxsize)
 				if (last_codefile != cf) {
 					TCHAR txt[256];
 					last_codefile = cf;
-					_stprintf(txt, _T("Source file: %s\n"), cf->name);
-					if (maxsize > _tcslen(txt)) {
+					_sntprintf(txt, sizeof txt, _T("Source file: %s\n"), cf->name);
+					if (maxsize > uaetcslen(txt)) {
 						_tcscat(out, txt);
-						maxsize -= _tcslen(txt);
+						maxsize -= uaetcslen(txt);
 					}
 				}
 				if (lastline - line > 10)
@@ -3769,10 +3778,10 @@ int debugmem_get_sourceline(uaecptr addr, TCHAR *out, int maxsize)
 				for (int j = line; j < lastline; j++) {
 					TCHAR txt[256];
 					TCHAR *s = au((uae_char*)cf->lineptr[j]);
-					if (maxsize > 6 + _tcslen(s) + 2) {
-						_stprintf(txt, _T("%5d %s\n"), j, s);
+					if (maxsize > 6 + uaetcslen(s) + 2) {
+						_sntprintf(txt, sizeof txt, _T("%5d %s\n"), j, s);
 						_tcscat(out, txt);
-						maxsize -= _tcslen(txt) + 2;
+						maxsize -= uaetcslen(txt) + 2;
 					}
 					xfree(s);
 				}
@@ -3797,9 +3806,9 @@ int debugmem_get_segment(uaecptr addr, bool *exact, bool *ext, TCHAR *out, TCHAR
 		if (exact && alloc->start + 8 + debugmem_bank.start == addr)
 			*exact = true;
 		if (out)
-			_stprintf(out, _T("[%06X]"), ((addr - debugmem_bank.start) - (alloc->start + 8)) & 0xffffff);
+			_sntprintf(out, sizeof out, _T("[%06X]"), ((addr - debugmem_bank.start) - (alloc->start + 8)) & 0xffffff);
 		if (name)
-			_stprintf(name, _T("Segment %d: %08x %08x-%08x"),
+			_sntprintf(name, sizeof name, _T("Segment %d: %08x %08x-%08x"),
 				alloc->id, alloc->idtype, alloc->start + debugmem_bank.start, alloc->start + alloc->size - 1 + debugmem_bank.start);
 		if (ext)
 			*ext = false;
@@ -3809,9 +3818,9 @@ int debugmem_get_segment(uaecptr addr, bool *exact, bool *ext, TCHAR *out, TCHAR
 		struct debugsegtracker *seg = findsegment(addr, &alloc);
 		if (seg) {
 			if (out)
-				_stprintf(out, _T("[%06X]"), ((addr - debugmem_bank.start) - (alloc->start + 8)) & 0xffffff);
+				_sntprintf(out, sizeof out, _T("[%06X]"), ((addr - debugmem_bank.start) - (alloc->start + 8)) & 0xffffff);
 			if (name)
-				_stprintf(name, _T("Segment %d ('%s') %08x %08x-%08x"),
+				_sntprintf(name, sizeof name, _T("Segment %d ('%s') %08x %08x-%08x"),
 					alloc->internalid, seg->name, alloc->idtype, alloc->start, alloc->start + alloc->size - 1);
 			if (ext)
 				*ext = true;
@@ -3917,8 +3926,10 @@ uae_u32 debugmem_chiphit(uaecptr addr, uae_u32 v, int size)
 		}
 	}
 	if (debugmem_active && debugmem_mapped) {
+#ifdef DEBUGGER
 		if (!dbg)
 			m68k_dumpstate(0, 0xffffffff);
+#endif
 	}
 	recursive--;
 	return 0xdeadf00d;
@@ -3942,8 +3953,10 @@ bool debugmem_extinvalidmem(uaecptr addr, uae_u32 v, int size)
 		console_out_f(_T("%s read from %08x\n"), size == 4 ? _T("Long") : (size == 2 ? _T("Word") : _T("Byte")), addr, v);
 		dbg = debugmem_break(9);
 	}
+#ifdef DEBUGGER
 	if (!dbg)
 		m68k_dumpstate(0, 0xffffffff);
+#endif
 	recursive--;
 	return true;
 }
@@ -3987,7 +4000,9 @@ bool debugmem_list_stackframe(bool super)
 		uae_u32 sregs[16];
 		memcpy(sregs, regs.regs, sizeof(uae_u32) * 16);
 		memcpy(regs.regs, sf->regs, sizeof(uae_u32) * 16);
+#ifdef DEBUGGER
 		m68k_disasm(sf->current_pc, NULL, 0xffffffff, 2);
+#endif
 		memcpy(regs.regs, sregs, sizeof(uae_u32) * 16);
 		console_out_f(_T("\n"));
 	}

@@ -29,6 +29,7 @@ static const int pissoff_nojit_value = 256 * CYCLE_UNIT;
 
 evt_t event_cycles, nextevent, currcycle;
 int is_syncline;
+static int syncline_cnt;
 frame_time_t is_syncline_end;
 int cycles_to_next_event;
 int max_cycles_to_next_event;

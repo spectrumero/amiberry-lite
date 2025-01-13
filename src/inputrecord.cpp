@@ -55,7 +55,9 @@ static uae_u32 cycleoffset;
 
 static uae_u32 pcs[16];
 static uae_u64 pcs2[16];
+#ifdef DEBUGGER
 extern void activate_debugger (void);
+#endif
 static int warned;
 
 static void setlasthsync (void)
@@ -689,7 +691,6 @@ void inprec_recorddebug (uae_u32 val)
 void inprec_playdebug (uae_u32 val)
 {
 #if INPUTRECORD_DEBUG > 0
-	extern void activate_debugger (void);
 	static uae_u32 pcs[16];
 	int err = 0;
 	if (inprec_pstart (INPREC_DEBUG)) {
@@ -959,7 +960,7 @@ void inprec_getstatus (TCHAR *title)
 	_tcscat (title, _T(" "));
 	p = title + _tcslen (title);
 	int mvp = current_maxvpos ();
-	_stprintf (p, _T("%03d %02d:%02d:%02d/%02d:%02d:%02d"), replaypos,
+	_sntprintf (p, sizeof p, _T("%03d %02d:%02d:%02d/%02d:%02d:%02d"), replaypos,
 		(int)(lasthsync / (vblank_hz * mvp * 60)), ((int)(lasthsync / (vblank_hz * mvp)) % 60), (lasthsync / mvp) % (int)vblank_hz,
 		(int)(endhsync / (vblank_hz * mvp * 60)), ((int)(endhsync / (vblank_hz * mvp)) % 60), (endhsync / mvp) % (int)vblank_hz);
 	p += _tcslen (p);

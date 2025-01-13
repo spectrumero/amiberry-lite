@@ -23,8 +23,9 @@
 #include "xwin.h"
 #include "drawing.h"
 #include "midiemu.h"
+#include "registry.h"
 
-extern void SetLastActiveConfig(const char* filename);
+extern void set_last_active_config(const char* filename);
 extern std::string current_dir;
 extern char last_loaded_config[MAX_DPATH];
 
@@ -33,7 +34,7 @@ extern char last_loaded_config[MAX_DPATH];
 enum
 {
 	A600_CONFIG = 3, // 8MB fast ram
-	A1200_CONFIG = 2 // 8MB fast ram
+	A1200_CONFIG = 1 // 8MB fast ram
 };
 
 struct game_hardware_options
@@ -221,6 +222,8 @@ void make_rom_symlink(const std::string& kickstart_short_name, const int kicksta
 	if (!std::filesystem::exists(kickstart_long_path))
 	{
 		const int roms[2] = { kickstart_number, -1 };
+		// copy the existing prefs->romfile to a backup variable, so we can restore it afterward
+		const std::string old_romfile = prefs->romfile;
 		if (configure_rom(prefs, roms, 0) == 1)
 		{
 			try {
@@ -238,6 +241,8 @@ void make_rom_symlink(const std::string& kickstart_short_name, const int kicksta
 				}
 			}
 		}
+		// restore the original prefs->romfile
+        strcpy(prefs->romfile, old_romfile.c_str());
 	}
 }
 
@@ -336,9 +341,6 @@ void cd_auto_prefs(uae_prefs* prefs, char* filepath)
 	TCHAR tmp[MAX_DPATH];
 
 	write_log("\nCD Autoload: %s  \n\n", filepath);
-
-	if (lstAvailableROMs.empty())
-		RescanROMs();
 
 	conf_path = get_configuration_path();
 	whdload_prefs.filename = get_game_filename(filepath);
@@ -616,7 +618,7 @@ void set_compatibility_settings(uae_prefs* prefs, const game_hardware_options& g
 		parse_cfg_line(prefs, line_string);
 	}
 
-	// CPU 68000/010 [requires a600 rom)]
+	// CPU 68000/010 (requires a600 rom)
 	else if ((strcmpi(game_detail.cpu.c_str(), "68000") == 0 || strcmpi(game_detail.cpu.c_str(), "68010") == 0) && a600_available)
 	{
 		line_string = "cpu_type=";
@@ -1224,9 +1226,6 @@ void whdload_auto_prefs(uae_prefs* prefs, const char* filepath)
 	if (amiberry_options.use_jst_instead_of_whd)
 		write_log("WHDBooter - Using JST instead of WHDLoad\n");
 
-	if (lstAvailableROMs.empty())
-		RescanROMs();
-
 	conf_path = get_configuration_path();
 	whdbooter_path = get_whdbootpath();
 	save_path = get_savedatapath(false);
@@ -1378,6 +1377,8 @@ void whdload_auto_prefs(uae_prefs* prefs, const char* filepath)
 		// SET THE BASE AMIGA (Expanded A1200)
 		write_log("WHDBooter - Host: A1200 ROM selected\n");
 		built_in_prefs(prefs, 4, A1200_CONFIG, 0, 0);
+		// set 8MB Fast RAM
+		prefs->fastmem[0].size = 0x800000;
 		_tcscpy(prefs->description, _T("AutoBoot Configuration [WHDLoad] [AGA]"));
 	}
 	else
