@@ -3851,13 +3851,13 @@ std::string get_home_directory(const bool portable_mode)
 	// 2: Check $HOME/Amiberry
 	if (user_home_dir != nullptr)
 	{
-        if (!directory_exists(user_home_dir, "/Amiberry"))
+        if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
         {
             // If $HOME exists, but not the Amiberry subdirectory, create it
-            my_mkdir((std::string(user_home_dir) + "/Amiberry").c_str());
+            my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
         }
 		// $HOME/Amiberry exists, use it
-		write_log("Using home directory from $HOME/Amiberry\n");
+		write_log("Using home directory from $HOME/Amiberry-Lite\n");
         auto result = std::string(user_home_dir);
 		return result.append("/Amiberry");
 	}
@@ -3874,16 +3874,16 @@ std::string get_config_directory(bool portable_mode)
 {
 #ifdef __MACH__
     const auto user_home_dir = getenv("HOME");
-    if (!directory_exists(user_home_dir, "/Amiberry"))
+    if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
     {
-        my_mkdir((std::string(user_home_dir) + "/Amiberry").c_str());
+        my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
     }
-    if (!directory_exists(user_home_dir, "/Amiberry/Configurations"))
+    if (!directory_exists(user_home_dir, "/Amiberry-Lite/Configurations"))
     {
-        my_mkdir((std::string(user_home_dir) + "/Amiberry/Configurations").c_str());
+        my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite/Configurations").c_str());
     }
     auto result = std::string(user_home_dir);
-    return result.append("/Amiberry/Configurations");
+    return result.append("/Amiberry-Lite/Configurations");
 #else
 	if (portable_mode)
 	{
@@ -3906,17 +3906,17 @@ std::string get_config_directory(bool portable_mode)
 	// 2: Check $HOME/Amiberry/conf
 	if (user_home_dir != nullptr)
 	{
-        if (!directory_exists(user_home_dir, "/Amiberry"))
+        if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
         {
-            my_mkdir((std::string(user_home_dir) + "/Amiberry").c_str());
+            my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
         }
 		// $HOME/Amiberry exists, use it
-		if (!directory_exists(user_home_dir, "/Amiberry/conf"))
+		if (!directory_exists(user_home_dir, "/Amiberry-Lite/conf"))
 		{
-			my_mkdir((std::string(user_home_dir) + "/Amiberry/conf").c_str());
+			my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite/conf").c_str());
 		}
         // This should be the most used scenario
-		write_log("Using config directory from $HOME/Amiberry/conf\n");
+		write_log("Using config directory from $HOME/Amiberry-Lite/conf\n");
 		auto result = std::string(user_home_dir);
 		return result.append("/Amiberry/conf");
 	}
@@ -4039,9 +4039,9 @@ void create_missing_amiberry_folders()
 			const std::string command = "cp -r " + default_controller_path + "* " + controllers_path;
 			system(command.c_str());
 		}
-		else if (my_existsdir("/usr/share/amiberry/controllers/"))
+		else if (my_existsdir("/usr/share/amiberry-lite/controllers/"))
 		{
-			const std::string command = "cp -r /usr/share/amiberry/controllers/* " + controllers_path;
+			const std::string command = "cp -r /usr/share/amiberry-lite/controllers/* " + controllers_path;
 			system(command.c_str());
 		}
 	}
@@ -4059,9 +4059,9 @@ void create_missing_amiberry_folders()
 			const std::string command = "cp -r " + default_whdboot_path + "* " + whdboot_path;
 			system(command.c_str());
 		}
-		else if (my_existsdir("/usr/share/amiberry/whdboot/"))
+		else if (my_existsdir("/usr/share/amiberry-lite/whdboot/"))
 		{
-			const std::string command = "cp -r /usr/share/amiberry/whdboot/* " + whdboot_path;
+			const std::string command = "cp -r /usr/share/amiberry-lite/whdboot/* " + whdboot_path;
 			system(command.c_str());
 		}
 	}
@@ -4087,9 +4087,9 @@ void create_missing_amiberry_folders()
 			const std::string command = "cp -r " + default_roms_path + "* " + rom_path;
 			system(command.c_str());
 		}
-		else if (my_existsdir("/usr/share/amiberry/roms/"))
+		else if (my_existsdir("/usr/share/amiberry-lite/roms/"))
 		{
-			const std::string command = "cp -r /usr/share/amiberry/roms/* " + rom_path;
+			const std::string command = "cp -r /usr/share/amiberry-lite/roms/* " + rom_path;
 			system(command.c_str());
 		}
 	}
@@ -4122,9 +4122,9 @@ void create_missing_amiberry_folders()
 static void init_amiberry_dirs(const bool portable_mode)
 {
 #ifdef __MACH__
-	const std::string amiberry_dir = "Amiberry";
+	const std::string amiberry_dir = "Amiberry-Lite";
 #else
-	const std::string amiberry_dir = "amiberry";
+	const std::string amiberry_dir = "amiberry-lite";
 #endif
 	current_dir = home_dir = get_home_directory(portable_mode);
     data_dir = get_data_directory(portable_mode);
@@ -4137,8 +4137,8 @@ static void init_amiberry_dirs(const bool portable_mode)
 	if (portable_mode)
 #endif
 	{
-		amiberry_conf_file = config_path + "/amiberry.conf";
-		amiberry_ini_file = config_path + "/amiberry.ini";
+		amiberry_conf_file = config_path + "/amiberry-lite.conf";
+		amiberry_ini_file = config_path + "/amiberry-lite.ini";
 		themes_path = config_path;
 
 		// These paths are relative to the XDG_DATA_HOME directory
@@ -4177,8 +4177,8 @@ static void init_amiberry_dirs(const bool portable_mode)
 			my_mkdir(xdg_config_home.c_str());
 
 		// The amiberry.conf file is always in the XDG_CONFIG_HOME/amiberry directory
-		amiberry_conf_file = xdg_config_home + "/amiberry.conf";
-		amiberry_ini_file = xdg_config_home + "/amiberry.ini";
+		amiberry_conf_file = xdg_config_home + "/amiberry-lite.conf";
+		amiberry_ini_file = xdg_config_home + "/amiberry-lite.ini";
 		themes_path = xdg_config_home;
 
 		// These paths are relative to the XDG_DATA_HOME directory
@@ -4217,7 +4217,7 @@ static void init_amiberry_dirs(const bool portable_mode)
 	floppy_path.append("/floppies/");
 	harddrive_path.append("/harddrives/");
 	cdrom_path.append("/cdroms/");
-	logfile_path.append("/amiberry.log");
+	logfile_path.append("/amiberry-lite.log");
 	rom_path.append("/roms/");
 	rp9_path.append("/rp9/");
 	saveimage_dir.append("/");
