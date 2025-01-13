@@ -30,7 +30,7 @@ jobs:
 
       - name: ZIP package for release
         if: github.ref_type == 'tag'
-        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bookworm-arm64.zip amiberry_*.deb
+        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bookworm-arm64.zip amiberry-lite_*.deb
 
       - name: Upload artifact for release
         if: github.ref_type == 'tag'
@@ -62,7 +62,7 @@ jobs:
 
       - name: ZIP package for release
         if: github.ref_type == 'tag'
-        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bookworm-armhf.zip amiberry_*.deb
+        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bookworm-armhf.zip amiberry-lite_*.deb
 
       - name: Upload artifact for release
         if: github.ref_type == 'tag'
@@ -94,7 +94,7 @@ jobs:
 
       - name: ZIP package for release
         if: github.ref_type == 'tag'
-        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bullseye-arm64.zip amiberry_*.deb
+        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bullseye-arm64.zip amiberry-lite_*.deb
 
       - name: Upload artifact for release
         if: github.ref_type == 'tag'
@@ -126,7 +126,7 @@ jobs:
 
       - name: ZIP package for release
         if: github.ref_type == 'tag'
-        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bullseye-armhf.zip amiberry_*.deb
+        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bullseye-armhf.zip amiberry-lite_*.deb
 
       - name: Upload artifact for release
         if: github.ref_type == 'tag'
