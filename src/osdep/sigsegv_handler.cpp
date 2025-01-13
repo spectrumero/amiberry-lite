@@ -268,17 +268,17 @@ static int handle_exception(mcontext_t sigcont, long fault_addr)
 
 				case SIZE_WORD:
 #ifndef __MACH__
-					sigcont->regs[rd] = uae_bswap_16((uae_u16)get_word(amiga_addr));
+					sigcont->regs[rd] = bswap_16((uae_u16)get_word(amiga_addr));
 #else
-					sigcont->__ss.__x[rd] = uae_bswap_16((uae_u16)get_word(amiga_addr));
+					sigcont->__ss.__x[rd] = bswap_16((uae_u16)get_word(amiga_addr));
 #endif
 					break;
 
 				case SIZE_INT:
 #ifndef __MACH__
-					sigcont->regs[rd] = uae_bswap_32(get_long(amiga_addr));
+					sigcont->regs[rd] = bswap_32(get_long(amiga_addr));
 #else
-					sigcont->__ss.__x[rd] = uae_bswap_32(get_long(amiga_addr));
+					sigcont->__ss.__x[rd] = bswap_32(get_long(amiga_addr));
 #endif
 					break;
 				}
@@ -301,17 +301,17 @@ static int handle_exception(mcontext_t sigcont, long fault_addr)
 				}
 				case SIZE_WORD: {
 #ifndef __MACH__
-					put_word(amiga_addr, uae_bswap_16(sigcont->regs[rd]));
+					put_word(amiga_addr, bswap_16(sigcont->regs[rd]));
 #else
-					put_word(amiga_addr, uae_bswap_16(sigcont->__ss.__x[rd]));
+					put_word(amiga_addr, bswap_16(sigcont->__ss.__x[rd]));
 #endif
 					break;
 				}
 				case SIZE_INT: {
 #ifndef __MACH__
-					put_long(amiga_addr, uae_bswap_32(sigcont->regs[rd]));
+					put_long(amiga_addr, bswap_32(sigcont->regs[rd]));
 #else
-					put_long(amiga_addr, uae_bswap_32(sigcont->__ss.__x[rd]));
+					put_long(amiga_addr, bswap_32(sigcont->__ss.__x[rd]));
 #endif
 					break;
 				}
@@ -697,11 +697,11 @@ static int handle_exception(unsigned long* pregs, long fault_addr)
 					break;
 
 				case SIZE_WORD:
-					pregs[rd] = uae_bswap_16(style == STYLE_SIGNED ? (uae_s16)get_word(amiga_addr) : (uae_u16)get_word(amiga_addr));
+					pregs[rd] = bswap_16(style == STYLE_SIGNED ? (uae_s16)get_word(amiga_addr) : (uae_u16)get_word(amiga_addr));
 					break;
 
 				case SIZE_INT:
-					pregs[rd] = uae_bswap_32(get_long(amiga_addr));
+					pregs[rd] = bswap_32(get_long(amiga_addr));
 					break;
 				}
 				output_log(_T("New value in %s: 0x%08x (old: 0x%08x)\n"), reg_names[rd], pregs[rd], oldval);
@@ -714,11 +714,11 @@ static int handle_exception(unsigned long* pregs, long fault_addr)
 					break;
 				}
 				case SIZE_WORD: {
-					put_word(amiga_addr, uae_bswap_16(pregs[rd]));
+					put_word(amiga_addr, bswap_16(pregs[rd]));
 					break;
 				}
 				case SIZE_INT: {
-					put_long(amiga_addr, uae_bswap_32(pregs[rd]));
+					put_long(amiga_addr, bswap_32(pregs[rd]));
 					break;
 				}
 				}
