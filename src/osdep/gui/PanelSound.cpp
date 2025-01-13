@@ -63,7 +63,7 @@ static gcn::DropDown* cboSwapChannels;
 static int curr_separation_idx;
 static int curr_stereodelay_idx;
 static int numdevs;
-static const int sndbufsizes[] = { 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768, 65536, -1 };
+static constexpr int sndbufsizes[] = { 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768, 65536, -1 };
 
 static gcn::StringListModel soundcard_list;
 
@@ -302,7 +302,7 @@ void InitPanelSound(const config_category& category)
 	for (int card = 0; card < numdevs; card++) {
 		TCHAR tmp[MAX_DPATH];
 		int type = sound_devices[card]->type;
-		_stprintf(tmp, _T("%s: %s"),
+		_sntprintf(tmp, sizeof tmp, _T("%s: %s"),
 			type == SOUND_DEVICE_SDL2 ? _T("SDL2") : (type == SOUND_DEVICE_DS ? _T("DSOUND") : (type == SOUND_DEVICE_AL ? _T("OpenAL") : (type == SOUND_DEVICE_PA ? _T("PortAudio") : (type == SOUND_DEVICE_WASAPI ? _T("WASAPI") : _T("WASAPI EX"))))),
 			sound_devices[card]->name);
 		soundcard_list.add(tmp);
@@ -317,7 +317,7 @@ void InitPanelSound(const config_category& category)
 	cboSoundcard = new gcn::DropDown(&soundcard_list);
 	cboSoundcard->setSize(category.panel->getWidth() - lblSoundcard->getWidth() - 8 - DISTANCE_BORDER * 2, cboSoundcard->getHeight());
 	cboSoundcard->setBaseColor(gui_base_color);
-	cboSoundcard->setBackgroundColor(gui_textbox_background_color);
+	cboSoundcard->setBackgroundColor(gui_background_color);
 	cboSoundcard->setForegroundColor(gui_foreground_color);
 	cboSoundcard->setSelectionColor(gui_selection_color);
 	cboSoundcard->setId("cboSoundcard");
@@ -326,35 +326,35 @@ void InitPanelSound(const config_category& category)
 	chkSystemDefault = new gcn::CheckBox("System default");
 	chkSystemDefault->setId("chkSystemDefault");
 	chkSystemDefault->setBaseColor(gui_base_color);
-	chkSystemDefault->setBackgroundColor(gui_textbox_background_color);
+	chkSystemDefault->setBackgroundColor(gui_background_color);
 	chkSystemDefault->setForegroundColor(gui_foreground_color);
 	chkSystemDefault->addActionListener(sound_action_listener);
 
 	optSoundDisabled = new gcn::RadioButton("Disabled", "radiosoundgroup");
 	optSoundDisabled->setId("sndDisable");
 	optSoundDisabled->setBaseColor(gui_base_color);
-	optSoundDisabled->setBackgroundColor(gui_textbox_background_color);
+	optSoundDisabled->setBackgroundColor(gui_background_color);
 	optSoundDisabled->setForegroundColor(gui_foreground_color);
 	optSoundDisabled->addActionListener(sound_action_listener);
 
 	optSoundDisabledEmu = new gcn::RadioButton("Disabled, but emulated", "radiosoundgroup");
 	optSoundDisabledEmu->setId("sndDisEmu");
 	optSoundDisabledEmu->setBaseColor(gui_base_color);
-	optSoundDisabledEmu->setBackgroundColor(gui_textbox_background_color);
+	optSoundDisabledEmu->setBackgroundColor(gui_background_color);
 	optSoundDisabledEmu->setForegroundColor(gui_foreground_color);
 	optSoundDisabledEmu->addActionListener(sound_action_listener);
 
 	optSoundEmulated = new gcn::RadioButton("Enabled", "radiosoundgroup");
 	optSoundEmulated->setId("sndEmulate");
 	optSoundEmulated->setBaseColor(gui_base_color);
-	optSoundEmulated->setBackgroundColor(gui_textbox_background_color);
+	optSoundEmulated->setBackgroundColor(gui_background_color);
 	optSoundEmulated->setForegroundColor(gui_foreground_color);
 	optSoundEmulated->addActionListener(sound_action_listener);
 
 	chkAutoSwitching = new gcn::CheckBox("Automatic switching");
 	chkAutoSwitching->setId("chkAutoSwitching");
 	chkAutoSwitching->setBaseColor(gui_base_color);
-	chkAutoSwitching->setBackgroundColor(gui_textbox_background_color);
+	chkAutoSwitching->setBackgroundColor(gui_background_color);
 	chkAutoSwitching->setForegroundColor(gui_foreground_color);
 	chkAutoSwitching->addActionListener(sound_action_listener);
 
@@ -363,7 +363,7 @@ void InitPanelSound(const config_category& category)
 	cboFrequency = new gcn::DropDown(&frequency_type_list);
 	cboFrequency->setSize(90, cboFrequency->getHeight());
 	cboFrequency->setBaseColor(gui_base_color);
-	cboFrequency->setBackgroundColor(gui_textbox_background_color);
+	cboFrequency->setBackgroundColor(gui_background_color);
 	cboFrequency->setForegroundColor(gui_foreground_color);
 	cboFrequency->setSelectionColor(gui_selection_color);
 	cboFrequency->setId("cboFrequency");
@@ -374,7 +374,7 @@ void InitPanelSound(const config_category& category)
 	cboSwapChannels = new gcn::DropDown(&swap_channels_list);
 	cboSwapChannels->setSize(95, cboSwapChannels->getHeight());
 	cboSwapChannels->setBaseColor(gui_base_color);
-	cboSwapChannels->setBackgroundColor(gui_textbox_background_color);
+	cboSwapChannels->setBackgroundColor(gui_background_color);
 	cboSwapChannels->setForegroundColor(gui_foreground_color);
 	cboSwapChannels->setSelectionColor(gui_selection_color);
 	cboSwapChannels->setId("cboSwapChannels");
@@ -385,7 +385,7 @@ void InitPanelSound(const config_category& category)
 	cboChannelMode = new gcn::DropDown(&channel_mode_list);
 	cboChannelMode->setSize(200, cboChannelMode->getHeight());
 	cboChannelMode->setBaseColor(gui_base_color);
-	cboChannelMode->setBackgroundColor(gui_textbox_background_color);
+	cboChannelMode->setBackgroundColor(gui_background_color);
 	cboChannelMode->setForegroundColor(gui_foreground_color);
 	cboChannelMode->setSelectionColor(gui_selection_color);
 	cboChannelMode->setId("cboChannelMode");
@@ -396,7 +396,7 @@ void InitPanelSound(const config_category& category)
 	cboInterpolation = new gcn::DropDown(&interpolation_type_list);
 	cboInterpolation->setSize(200, cboInterpolation->getHeight());
 	cboInterpolation->setBaseColor(gui_base_color);
-	cboInterpolation->setBackgroundColor(gui_textbox_background_color);
+	cboInterpolation->setBackgroundColor(gui_background_color);
 	cboInterpolation->setForegroundColor(gui_foreground_color);
 	cboInterpolation->setSelectionColor(gui_selection_color);
 	cboInterpolation->setId("cboInterpol");
@@ -407,7 +407,7 @@ void InitPanelSound(const config_category& category)
 	cboFilter = new gcn::DropDown(&filter_type_list);
 	cboFilter->setSize(200, cboFilter->getHeight());
 	cboFilter->setBaseColor(gui_base_color);
-	cboFilter->setBackgroundColor(gui_textbox_background_color);
+	cboFilter->setBackgroundColor(gui_background_color);
 	cboFilter->setForegroundColor(gui_foreground_color);
 	cboFilter->setSelectionColor(gui_selection_color);
 	cboFilter->setId("cboFilter");
@@ -418,7 +418,7 @@ void InitPanelSound(const config_category& category)
 	cboSeparation = new gcn::DropDown(&separation_list);
 	cboSeparation->setSize(120, cboSeparation->getHeight());
 	cboSeparation->setBaseColor(gui_base_color);
-	cboSeparation->setBackgroundColor(gui_textbox_background_color);
+	cboSeparation->setBackgroundColor(gui_background_color);
 	cboSeparation->setForegroundColor(gui_foreground_color);
 	cboSeparation->setSelectionColor(gui_selection_color);
 	cboSeparation->setId("cboSeparation");
@@ -429,7 +429,7 @@ void InitPanelSound(const config_category& category)
 	cboStereoDelay = new gcn::DropDown(&stereo_delay_list);
 	cboStereoDelay->setSize(120, cboStereoDelay->getHeight());
 	cboStereoDelay->setBaseColor(gui_base_color);
-	cboStereoDelay->setBackgroundColor(gui_textbox_background_color);
+	cboStereoDelay->setBackgroundColor(gui_background_color);
 	cboStereoDelay->setForegroundColor(gui_foreground_color);
 	cboStereoDelay->setSelectionColor(gui_selection_color);
 	cboStereoDelay->setId("cboStereoDelay");
@@ -440,7 +440,7 @@ void InitPanelSound(const config_category& category)
 	sldPaulaVol = new gcn::Slider(0, 100);
 	sldPaulaVol->setSize(150, SLIDER_HEIGHT);
 	sldPaulaVol->setBaseColor(gui_base_color);
-	sldPaulaVol->setBackgroundColor(gui_textbox_background_color);
+	sldPaulaVol->setBackgroundColor(gui_background_color);
 	sldPaulaVol->setForegroundColor(gui_foreground_color);
 	sldPaulaVol->setMarkerLength(20);
 	sldPaulaVol->setStepLength(10);
@@ -453,7 +453,7 @@ void InitPanelSound(const config_category& category)
 	sldCDVol = new gcn::Slider(0, 100);
 	sldCDVol->setSize(150, SLIDER_HEIGHT);
 	sldCDVol->setBaseColor(gui_base_color);
-	sldCDVol->setBackgroundColor(gui_textbox_background_color);
+	sldCDVol->setBackgroundColor(gui_background_color);
 	sldCDVol->setForegroundColor(gui_foreground_color);
 	sldCDVol->setMarkerLength(20);
 	sldCDVol->setStepLength(10);
@@ -466,7 +466,7 @@ void InitPanelSound(const config_category& category)
 	sldAHIVol = new gcn::Slider(0, 100);
 	sldAHIVol->setSize(150, SLIDER_HEIGHT);
 	sldAHIVol->setBaseColor(gui_base_color);
-	sldAHIVol->setBackgroundColor(gui_textbox_background_color);
+	sldAHIVol->setBackgroundColor(gui_background_color);
 	sldAHIVol->setForegroundColor(gui_foreground_color);
 	sldAHIVol->setMarkerLength(20);
 	sldAHIVol->setStepLength(10);
@@ -479,7 +479,7 @@ void InitPanelSound(const config_category& category)
 	sldMIDIVol = new gcn::Slider(0, 100);
 	sldMIDIVol->setSize(150, SLIDER_HEIGHT);
 	sldMIDIVol->setBaseColor(gui_base_color);
-	sldMIDIVol->setBackgroundColor(gui_textbox_background_color);
+	sldMIDIVol->setBackgroundColor(gui_background_color);
 	sldMIDIVol->setForegroundColor(gui_foreground_color);
 	sldMIDIVol->setMarkerLength(20);
 	sldMIDIVol->setStepLength(10);
@@ -490,14 +490,14 @@ void InitPanelSound(const config_category& category)
 	chkFloppySound = new gcn::CheckBox("Enable floppy drive sound");
 	chkFloppySound->setId("chkFloppySound");
 	chkFloppySound->setBaseColor(gui_base_color);
-	chkFloppySound->setBackgroundColor(gui_textbox_background_color);
+	chkFloppySound->setBackgroundColor(gui_background_color);
 	chkFloppySound->setForegroundColor(gui_foreground_color);
 	chkFloppySound->addActionListener(sound_action_listener);
 	
 	sldFloppySoundEmpty = new gcn::Slider(0, 100);
 	sldFloppySoundEmpty->setSize(100, SLIDER_HEIGHT);
 	sldFloppySoundEmpty->setBaseColor(gui_base_color);
-	sldFloppySoundEmpty->setBackgroundColor(gui_textbox_background_color);
+	sldFloppySoundEmpty->setBackgroundColor(gui_background_color);
 	sldFloppySoundEmpty->setForegroundColor(gui_foreground_color);
 	sldFloppySoundEmpty->setMarkerLength(20);
 	sldFloppySoundEmpty->setStepLength(10);
@@ -509,7 +509,7 @@ void InitPanelSound(const config_category& category)
 	sldFloppySoundDisk = new gcn::Slider(0, 100);
 	sldFloppySoundDisk->setSize(100, SLIDER_HEIGHT);
 	sldFloppySoundDisk->setBaseColor(gui_base_color);
-	sldFloppySoundDisk->setBackgroundColor(gui_textbox_background_color);
+	sldFloppySoundDisk->setBackgroundColor(gui_background_color);
 	sldFloppySoundDisk->setForegroundColor(gui_foreground_color);
 	sldFloppySoundDisk->setMarkerLength(20);
 	sldFloppySoundDisk->setStepLength(10);
@@ -521,7 +521,7 @@ void InitPanelSound(const config_category& category)
 	sldSoundBufferSize = new gcn::Slider(0, 10);
 	sldSoundBufferSize->setSize(170, SLIDER_HEIGHT);
 	sldSoundBufferSize->setBaseColor(gui_base_color);
-	sldSoundBufferSize->setBackgroundColor(gui_textbox_background_color);
+	sldSoundBufferSize->setBackgroundColor(gui_background_color);
 	sldSoundBufferSize->setForegroundColor(gui_foreground_color);
 	sldSoundBufferSize->setMarkerLength(20);
 	sldSoundBufferSize->setStepLength(1);
@@ -532,14 +532,14 @@ void InitPanelSound(const config_category& category)
 	optSoundPull = new gcn::RadioButton("Pull audio", "radioaudiomethod");
 	optSoundPull->setId("optSoundPull");
 	optSoundPull->setBaseColor(gui_base_color);
-	optSoundPull->setBackgroundColor(gui_textbox_background_color);
+	optSoundPull->setBackgroundColor(gui_background_color);
 	optSoundPull->setForegroundColor(gui_foreground_color);
 	optSoundPull->addActionListener(sound_action_listener);
 
 	optSoundPush = new gcn::RadioButton("Push audio", "radioaudiomethod");
 	optSoundPush->setId("optSoundPush");
 	optSoundPush->setBaseColor(gui_base_color);
-	optSoundPush->setBackgroundColor(gui_textbox_background_color);
+	optSoundPush->setBackgroundColor(gui_background_color);
 	optSoundPush->setForegroundColor(gui_foreground_color);
 	optSoundPush->addActionListener(sound_action_listener);
 	
@@ -907,7 +907,8 @@ bool HelpPanelSound(std::vector<std::string>& helptext)
 	helptext.emplace_back("Sound emulation");
 	helptext.emplace_back("Here you can select if Sound will be Disabled, Disabled but emulated or Enabled.");
 	helptext.emplace_back("If the selected sound card could not be initialized during startup, Amiberry will");
-	helptext.emplace_back("automatically disable the sound emulation.");
+	helptext.emplace_back("automatically disable the sound emulation. Autoswitching allows the emulator to switch");
+	helptext.emplace_back("between Enabled/Disabled, depending on whether the audio buffer has something or not.");
 	helptext.emplace_back(" ");
 	helptext.emplace_back("Volume");
 	helptext.emplace_back("Here you can select the output volume for the various emulated devices.");

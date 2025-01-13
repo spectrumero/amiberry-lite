@@ -15,7 +15,7 @@ extern void real_main (int, TCHAR **);
 extern void usage (void);
 extern void print_version();
 extern void sleep_micros (int ms);
-extern void sleep_millis (int ms);
+extern int sleep_millis (int ms);
 extern int sleep_millis_main(int ms);
 extern int sleep_millis_amiga(int ms);
 extern void sleep_cpu_wakeup(void);
@@ -40,6 +40,7 @@ extern void target_getdate(int *y, int *m, int *d);
 extern void target_startup_msg(const TCHAR *title, const TCHAR *msg);
 extern void target_cpu_speed(void);
 extern int target_sleep_nanos(int);
+void target_setdefaultstatefilename(const TCHAR*);
 extern bool get_plugin_path (TCHAR *out, int size, const TCHAR *path);
 extern void strip_slashes (TCHAR *p);
 extern void fix_trailing (TCHAR *p);
@@ -82,6 +83,7 @@ struct bstring {
 
 extern TCHAR *colormodes[];
 extern int saveimageoriginalpath;
+extern std::string get_ini_file_path();
 extern void get_saveimage_path(char* out, int size, int dir);
 extern std::string get_configuration_path();
 extern void get_nvram_path(TCHAR* out, int size);

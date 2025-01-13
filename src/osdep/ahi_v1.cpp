@@ -1,11 +1,12 @@
 /*
 * UAE - The Un*x Amiga Emulator
 *
-* Win32 interface
+* SDL2 interface
 *
 * Copyright 1997 Mathias Ortmann
 * Copyright 1997-2001 Brian King
 * Copyright 2000-2002 Bernd Roesch
+* Copyright 2024 Dimitris Panokostas
 */
 
 #define NATIVBUFFNUM 4
@@ -16,12 +17,12 @@
 
 #if defined(AHI)
 
-#include <ctype.h>
-#include <assert.h>
+#include <cctype>
+#include <cassert>
 
-#include <stdlib.h>
-#include <stdarg.h>
-#include <stdio.h>
+#include <cstdlib>
+#include <cstdarg>
+#include <cstdio>
 
 #include "options.h"
 #include "audio.h"
@@ -74,7 +75,7 @@ struct winuae	//this struct is put in a6 if you call
 };
 static struct winuae uaevar;
 
-void ahi_close_sound(void)
+void ahi_close_sound()
 {
 	if (!ahi_on)
 		return;
@@ -84,84 +85,83 @@ void ahi_close_sound(void)
 
 	if (ahi_dev) {
 		SDL_PauseAudioDevice(ahi_dev, 1);
+		SDL_CloseAudioDevice(ahi_dev);
+		ahi_dev = 0;
 	} else {
 		write_log(_T("AHI: Sound Stopped...\n"));
 	}
-
-	if (ahi_dev)
-		SDL_CloseAudioDevice(ahi_dev);
-	ahi_dev = 0;
 	if (ahi_dev_rec)
 		SDL_CloseAudioDevice(ahi_dev_rec);
 	ahi_dev_rec = 0;
 	if (ahisndbuffer)
+	{
 		xfree(ahisndbuffer);
-	ahisndbuffer = nullptr;
+		ahisndbuffer = nullptr;
+	}
 }
 
 typedef unsigned long DWORD;
 
 void ahi_updatesound(int force)
 {
-	Uint32 pos = 0;
+	Uint32 pos;
+	Uint32 dwBytes1;
+	Uint8 *dwData1;
 	static int oldpos;
 
 	if (sound_flushes2 == 1) {
 		oldpos = 0;
 		intcount = 1;
 		INTREQ(0x8000 | 0x2000);
+
+		// Start playing audio
 		SDL_PauseAudioDevice(ahi_dev, 0);
 	}
 
-	Uint32 queuedAudioSize = SDL_GetQueuedAudioSize(ahi_dev);
-	if (queuedAudioSize != 0) {
-		pos = queuedAudioSize;
-		pos -= ahitweak;
-		//if (pos < 0)
-		//	pos += ahisndbufsize;
-		if (pos >= ahisndbufsize)
-			pos -= ahisndbufsize;
-		pos = (pos / (amigablksize * 4)) * (amigablksize * 4);
-		if (force == 1) {
-			if (oldpos != pos) {
-				intcount = 1;
-				INTREQ(0x8000 | 0x2000);
-				return; //to generate amiga ints every amigablksize
-			}
-			else {
-				return;
-			}
+	SDL_LockAudioDevice(ahi_dev);
+	pos = SDL_GetQueuedAudioSize(ahi_dev);
+	SDL_UnlockAudioDevice(ahi_dev);
+	// safety check to limit the number of bytes being queued
+	if (pos > 65536) return;
+
+	pos -= ahitweak;
+	if (pos < 0)
+		pos += ahisndbufsize;
+	if (pos >= ahisndbufsize)
+		pos -= ahisndbufsize;
+	pos = (pos / (amigablksize * 4)) * (amigablksize * 4);
+	if (force == 1) {
+		if (oldpos != pos) {
+			intcount = 1;
+			INTREQ(0x8000 | 0x2000);
+			return; //to generate amiga ints every amigablksize
+		}
+		else {
+			return;
 		}
 	}
 
-	//hr = lpDSB2->Lock(oldpos, amigablksize * 4, &dwData1, &dwBytes1, &dwData2, &dwBytes2, 0);
-	//if (hr == DSERR_BUFFERLOST) {
-	//	write_log(_T("AHI: lostbuf %d %x\n"), pos, amigablksize);
-	//	IDirectSoundBuffer_Restore(lpDSB2);
-	//	hr = lpDSB2->Lock(oldpos, amigablksize * 4, &dwData1, &dwBytes1, &dwData2, &dwBytes2, 0);
-	//}
-	//if (FAILED(hr))
-	//	return;
+	dwBytes1 = amigablksize * 4;
+	dwData1 = ahisndbuffer + oldpos;
 
 	if (currprefs.sound_stereo_swap_ahi) {
-		auto* p = reinterpret_cast<uae_s16*>(ahisndbuffer);
-		for (int i = 0; i < ahisndbufsize / 2; i += 2) {
-			const uae_s16 tmp = p[i + 0];
+		int i;
+		auto p = reinterpret_cast<uae_s16*>(ahisndbuffer);
+		for (i = 0; i < dwBytes1 / 2; i += 2) {
+			uae_s16 tmp;
+			tmp = p[i + 0];
 			p[i + 0] = p[i + 1];
 			p[i + 1] = tmp;
 		}
 	}
 
-	//memcpy(dwData1, ahisndbuffer, dwBytes1);
-	//if (dwData2)
-	//	memcpy(dwData2, (uae_u8*)ahisndbuffer + dwBytes1, dwBytes2);
-
-	SDL_QueueAudio(ahi_dev, ahisndbuffer, amigablksize * 4);
-
+	// Copy the audio data to the buffer
+	memcpy(dwData1, ahisndbuffer, dwBytes1);
+	
 	sndptrmax = ahisndbuffer + ahisndbufsize;
 	ahisndbufpt = reinterpret_cast<int*>(ahisndbuffer);
 
-	//IDirectSoundBuffer_Unlock(lpDSB2, dwData1, dwBytes1, dwData2, dwBytes2);
+	SDL_QueueAudio(ahi_dev, dwData1, dwBytes1);
 
 	oldpos += amigablksize * 4;
 	if (oldpos >= ahisndbufsize)
@@ -173,15 +173,15 @@ void ahi_updatesound(int force)
 }
 
 
-void ahi_finish_sound_buffer (void)
+void ahi_finish_sound_buffer ()
 {
 	sound_flushes2++;
 	ahi_updatesound(2);
 }
 
-static int ahi_init_record (void)
+static int ahi_init_record ()
 {
-#ifdef WIN32
+#ifdef _WIN32
 	HRESULT hr;
 	DSCBUFFERDESC sound_buffer_rec;
 	// Record begin
@@ -219,9 +219,9 @@ static int ahi_init_record (void)
 	desired.format = AUDIO_S16SYS;
 	desired.channels = sound_channels_ahi;
 	desired.samples = amigablksize * 4 * RECORDBUFFER;
-	desired.callback = NULL; // We'll use SDL_QueueAudio and SDL_DequeueAudio instead of a callback
+	desired.callback = nullptr; // We'll use SDL_QueueAudio and SDL_DequeueAudio instead of a callback
 
-	ahi_dev_rec = SDL_OpenAudioDevice(NULL, 1, &desired, &obtained, 0);
+	ahi_dev_rec = SDL_OpenAudioDevice(nullptr, 1, &desired, &obtained, 0);
 	if (ahi_dev_rec == 0) {
 		write_log(_T("AHI: SDL_OpenAudioDevice() failure: %s\n"), SDL_GetError());
 		record_enabled = -1;
@@ -254,9 +254,20 @@ void setvolume_ahi (int vol)
 #endif
 }
 
-static int ahi_init_sound(void)
+static int ahi_init_sound()
 {
+	if (ahi_dev)
+		return 0;
+
 	enumerate_sound_devices();
+	SDL_zero(ahi_want);
+	ahi_want.freq = sound_freq_ahi;
+	ahi_want.format = sound_bits_ahi == 16 ? AUDIO_S16SYS : AUDIO_U8;
+	ahi_want.channels = sound_channels_ahi;
+	ahi_want.samples = amigablksize;
+
+	write_log(_T("AHI: Init AHI Sound Rate %d, Channels %d, Bits %d, Buffsize %d\n"),
+	sound_freq_ahi, sound_channels_ahi, sound_bits_ahi, amigablksize);
 
 	if (!amigablksize)
 		return 0;
@@ -267,17 +278,7 @@ static int ahi_init_sound(void)
 		return 0;
 
 	const auto devname = sound_devices[currprefs.soundcard]->name;
-	SDL_zero(ahi_want);
-	ahi_want.freq = sound_freq_ahi;
-	ahi_want.format = AUDIO_S16SYS;
-	ahi_want.channels = sound_channels_ahi;
-	ahi_want.samples = amigablksize * 4;
-
-	write_log(_T("AHI: Init AHI Sound Rate %d, Channels %d, Bits %d, Buffsize %d\n"),
-		sound_freq_ahi, sound_channels_ahi, sound_bits_ahi, amigablksize);
-
-	if (ahi_dev == 0)
-		ahi_dev = SDL_OpenAudioDevice(currprefs.soundcard_default ? nullptr : devname, 0, &ahi_want, &ahi_have, 0);
+	ahi_dev = SDL_OpenAudioDevice(currprefs.soundcard_default ? nullptr : devname, 0, &ahi_want, &ahi_have, 0);
 
 	if (ahi_dev == 0) {
 		write_log(_T("AHI: Failed to open selected SDL2 device: %s, retrying with default device\n"), SDL_GetError());
@@ -300,7 +301,7 @@ static int ahi_init_sound(void)
 	return sound_freq_ahi;
 }
 
-int ahi_open_sound (void)
+int ahi_open_sound ()
 {
 	int rate;
 
@@ -389,10 +390,9 @@ uae_u32 REGPARAM2 ahi_demux (TrapContext *context)
 
 	case 2:
 		{
-			int i;
 			uaecptr addr = m68k_areg (regs, 0);
-			for (i = 0; i < amigablksize * 4; i += 4)
-				*ahisndbufpt++ = get_long (addr + i);
+			for (int i = 0; i < amigablksize * 4; i += 4)
+				*ahisndbufpt++ = static_cast<int>(get_long(addr + i));
 			ahi_finish_sound_buffer();
 		}
 		return amigablksize;
@@ -400,7 +400,7 @@ uae_u32 REGPARAM2 ahi_demux (TrapContext *context)
 	case 3:
 		{
 			//Recording
-#ifdef WIN32
+#ifdef _WIN32
 		LPVOID pos1, pos2;
 		DWORD t, cur_pos;
 		uaecptr addr;
@@ -453,9 +453,7 @@ uae_u32 REGPARAM2 ahi_demux (TrapContext *context)
 		lpDSB2r->Unlock(pos1, byte1, pos2, byte2);
 		return (todo - t) / t;
 #else
-		uaecptr addr;
-		int i, todo;
-		Uint32 byte1, byte2;
+			Uint32 byte1, byte2;
 
 		if (!ahi_on)
 			return -2;
@@ -464,16 +462,16 @@ uae_u32 REGPARAM2 ahi_demux (TrapContext *context)
 		if (record_enabled < 0)
 			return -2;
 
-		todo = SDL_GetQueuedAudioSize(ahi_dev_rec);
+		auto todo = SDL_GetQueuedAudioSize(ahi_dev_rec);
 		if (todo < amigablksize * 4) //if no complete buffer ready exit
 			return -1;
 
-		addr = m68k_areg(regs, 0);
-		uae_u16* sndbufrecpt = (uae_u16*)malloc(todo);
+		uaecptr addr = m68k_areg(regs, 0);
+		auto* sndbufrecpt = static_cast<uae_u16*>(malloc(todo));
 		SDL_DequeueAudio(ahi_dev_rec, sndbufrecpt, todo);
 
 		todo /= 4;
-		for (i = 0; i < todo; i++) {
+		for (int i = 0; i < todo; i++) {
 			uae_u32 s1, s2;
 			if (currprefs.sound_stereo_swap_ahi) {
 				s1 = sndbufrecpt[1];
@@ -495,10 +493,9 @@ uae_u32 REGPARAM2 ahi_demux (TrapContext *context)
 
 	case 4:
 		{
-			int i;
 			if (!ahi_on)
 				return -2;
-			i = intcount;
+			int i = intcount;
 			intcount = 0;
 			return i;
 		}
@@ -535,7 +532,7 @@ uae_u32 REGPARAM2 ahi_demux (TrapContext *context)
 
 	case 12:
 		{
-			TCHAR* s = au((char*)get_real_address(m68k_areg(regs, 0)));
+			TCHAR* s = au(reinterpret_cast<char*>(get_real_address(m68k_areg(regs, 0))));
 			if (SDL_SetClipboardText(s) != 0) {
 				// handle error
 				write_log("Unable to set clipboard text: %s\n", SDL_GetError());
@@ -607,9 +604,9 @@ uae_u32 REGPARAM2 ahi_demux (TrapContext *context)
 	{
 		struct timespec ts {};
 		clock_gettime(CLOCK_MONOTONIC, &ts);
-		const auto time = int64_t(ts.tv_sec) * 1000000000 + ts.tv_nsec;
-		put_long(m68k_areg(regs, 0), uae_u32(time & 0xffffffff));
-		put_long(m68k_areg(regs, 0) + 4, uae_u32(time >> 32));
+		const auto time = static_cast<int64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
+		put_long(m68k_areg(regs, 0), static_cast<uae_u32>(time & 0xffffffff));
+		put_long(m68k_areg(regs, 0) + 4, static_cast<uae_u32>(time >> 32));
 			}
 	return 1;
 

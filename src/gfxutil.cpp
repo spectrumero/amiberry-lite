@@ -15,7 +15,9 @@
 //#include "gfxfilter.h"
 #include "machdep/maccess.h"
 
-#include <math.h>
+#include <cmath>
+
+#include <algorithm>
 
 float getvsyncrate(int monid, float hz, int *mult)
 {
@@ -128,8 +130,7 @@ static float video_gamma (float value, float gamma, float bri, float con)
 	factor = (float)pow(255.0f, 1.0f - gamma);
 	ret = (float)(factor * pow(value, gamma));
 
-	if (ret < 0.0f)
-		ret = 0.0f;
+	ret = std::max(ret, 0.0f);
 
 	return ret;
 }
@@ -174,10 +175,8 @@ static void video_calc_gammatable(int monid)
 				v = video_gamma(val, gams[j], bri, con);
 			}
 
-			if (v < 0.0)
-				v = 0.0;
-			if (v > max)
-				v = max;
+			v = std::max<double>(v, 0.0);
+			v = std::min(v, max);
 
 			uae_gamma[i][j] = (uae_u32)(v + 0.5);
 		}

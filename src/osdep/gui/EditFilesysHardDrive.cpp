@@ -92,7 +92,7 @@ static void setharddrive()
 {
 	sethardfilegeo();
 	sethd();
-	txtHDPath->setText(current_hfdlg.ci.rootdir);
+	//txtHDPath->setText(current_hfdlg.ci.rootdir);
 	auto selIndex = 0;
 	for (auto i = 0; i < controller.size(); ++i) {
 		if (controller[i].type == current_hfdlg.ci.controller_type)
@@ -131,7 +131,8 @@ public:
 			current_hfdlg.ci.controller_type_unit = posn / HD_CONTROLLER_NEXT_UNIT;
 			current_hfdlg.forcedcylinders = 0;
 			current_hfdlg.ci.cyls = current_hfdlg.ci.highcyl = current_hfdlg.ci.sectors = current_hfdlg.ci.surfaces = 0;
-			updatehdfinfo(true, true, true);
+			std::string txt1, txt2;
+			updatehdfinfo(true, true, true, txt1, txt2);
 			inithdcontroller(current_hfdlg.ci.controller_type, current_hfdlg.ci.controller_type_unit, UAEDEV_HDF, current_hfdlg.ci.rootdir[0] != 0);
 			setharddrive();
 		}
@@ -169,6 +170,7 @@ static void InitEditFilesysHardDrive()
 	wndEditFilesysHardDrive->setForegroundColor(gui_foreground_color);
 	wndEditFilesysHardDrive->setCaption("Hard Drive settings");
 	wndEditFilesysHardDrive->setTitleBarHeight(TITLEBAR_HEIGHT);
+	wndEditFilesysHardDrive->setMovable(false);
 
 	filesysHardDriveActionListener = new FilesysHardDriveActionListener();
 
@@ -196,7 +198,7 @@ static void InitEditFilesysHardDrive()
 	txtHDPath->setSize(500, TEXTFIELD_HEIGHT);
 	txtHDPath->setId("txtHDDPath");
 	txtHDPath->setBaseColor(gui_base_color);
-	txtHDPath->setBackgroundColor(gui_textbox_background_color);
+	txtHDPath->setBackgroundColor(gui_background_color);
 	txtHDPath->setForegroundColor(gui_foreground_color);
 
 	lblHDController = new gcn::Label("Controller:");
@@ -204,7 +206,7 @@ static void InitEditFilesysHardDrive()
 	cboHDController = new gcn::DropDown(&controllerListModel);
 	cboHDController->setSize(200, DROPDOWN_HEIGHT);
 	cboHDController->setBaseColor(gui_base_color);
-	cboHDController->setBackgroundColor(gui_textbox_background_color);
+	cboHDController->setBackgroundColor(gui_background_color);
 	cboHDController->setForegroundColor(gui_foreground_color);
 	cboHDController->setSelectionColor(gui_selection_color);
 	cboHDController->setId("cboHDController");
@@ -213,7 +215,7 @@ static void InitEditFilesysHardDrive()
 	cboHDControllerUnit = new gcn::DropDown(&unitListModel);
 	cboHDControllerUnit->setSize(60, DROPDOWN_HEIGHT);
 	cboHDControllerUnit->setBaseColor(gui_base_color);
-	cboHDControllerUnit->setBackgroundColor(gui_textbox_background_color);
+	cboHDControllerUnit->setBackgroundColor(gui_background_color);
 	cboHDControllerUnit->setForegroundColor(gui_foreground_color);
 	cboHDControllerUnit->setSelectionColor(gui_selection_color);
 	cboHDControllerUnit->setId("cboHDControllerUnit");
@@ -222,7 +224,7 @@ static void InitEditFilesysHardDrive()
 	cboHDControllerType = new gcn::DropDown(&controllerTypeListModel);
 	cboHDControllerType->setSize(60, DROPDOWN_HEIGHT);
 	cboHDControllerType->setBaseColor(gui_base_color);
-	cboHDControllerType->setBackgroundColor(gui_textbox_background_color);
+	cboHDControllerType->setBackgroundColor(gui_background_color);
 	cboHDControllerType->setForegroundColor(gui_foreground_color);
 	cboHDControllerType->setSelectionColor(gui_selection_color);
 	cboHDControllerType->setId("cboHDControllerType");
@@ -231,7 +233,7 @@ static void InitEditFilesysHardDrive()
 	cboHDFeatureLevel = new gcn::DropDown(&hdFeatureLevelListModel);
 	cboHDFeatureLevel->setSize(80, DROPDOWN_HEIGHT);
 	cboHDFeatureLevel->setBaseColor(gui_base_color);
-	cboHDFeatureLevel->setBackgroundColor(gui_textbox_background_color);
+	cboHDFeatureLevel->setBackgroundColor(gui_background_color);
 	cboHDFeatureLevel->setForegroundColor(gui_foreground_color);
 	cboHDFeatureLevel->setSelectionColor(gui_selection_color);
 	cboHDFeatureLevel->setId("cboHDFeatureLevel");
@@ -257,6 +259,8 @@ static void InitEditFilesysHardDrive()
 	wndEditFilesysHardDrive->requestModalFocus();
 	focus_bug_workaround(wndEditFilesysHardDrive);
 	cmdHDDCancel->requestFocus();
+
+	setharddrive();
 }
 
 static void ExitEditFilesysHardDrive()
@@ -550,7 +554,6 @@ bool EditFilesysHardDrive(const int unit_no)
 	const AmigaMonitor* mon = &AMonitors[0];
 
 	mountedinfo mi{};
-	uaedev_config_data* uci;
 
 	dialogResult = false;
 	dialogFinished = false;
@@ -581,7 +584,7 @@ bool EditFilesysHardDrive(const int unit_no)
 
 	if (unit_no >= 0)
 	{
-		uci = &changed_prefs.mountconfig[unit_no];
+		uaedev_config_data* uci = &changed_prefs.mountconfig[unit_no];
 		get_filesys_unitconfig(&changed_prefs, unit_no, &mi);
 
 		current_hfdlg.forcedcylinders = uci->ci.highcyl;
@@ -594,7 +597,8 @@ bool EditFilesysHardDrive(const int unit_no)
 		fileSelected = false;
 	}
 
-	updatehdfinfo(true, false, true);
+	std::string txt1, txt2;
+	updatehdfinfo(true, false, true, txt1, txt2);
 
 	// Prepare the screen once
 	uae_gui->logic();

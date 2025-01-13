@@ -68,6 +68,7 @@ static void InitCreateFolder(const std::string& path)
 	wndCreateFolder->setBaseColor(gui_base_color);
 	wndCreateFolder->setForegroundColor(gui_foreground_color);
 	wndCreateFolder->setTitleBarHeight(TITLEBAR_HEIGHT);
+	wndCreateFolder->setMovable(false);
 	gui_top->add(wndCreateFolder);
 
 	createFolderButtonActionListener = new CreateFolderRequesterButtonActionListener();
@@ -83,7 +84,7 @@ static void InitCreateFolder(const std::string& path)
 	txtCreateFolder->setSize(DIALOG_WIDTH - 2 * DISTANCE_BORDER - 4, TEXTFIELD_HEIGHT);
 	txtCreateFolder->setBaseColor(gui_base_color);
 	txtCreateFolder->setForegroundColor(gui_foreground_color);
-	txtCreateFolder->setBackgroundColor(gui_textbox_background_color);
+	txtCreateFolder->setBackgroundColor(gui_background_color);
 	txtCreateFolder->setPosition(lblCreateFolder->getX(), lblCreateFolder->getY() + lblCreateFolder->getHeight() + DISTANCE_NEXT_Y);
 	txtCreateFolder->setEnabled(true);
 	txtCreateFolder->setText("");

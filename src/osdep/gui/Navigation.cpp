@@ -44,13 +44,14 @@ static NavigationMap nav_map[] =
 	{"Priority", "cboInactiveRunAtPrio", "cboActiveRunAtPrio", "Miscellaneous", "Savestates" },
 	{"Savestates", "State0", "State0", "Priority", "Virtual Keyboard"},
 	{"Virtual Keyboard", "chkVkEnabled", "chkVkEnabled", "Savestates", "WHDLoad"},
-	{"WHDLoad", "cmdWhdloadEject", "cmdWhdloadEject", "Virtual Keyboard", "Quit"},
-	{"Shutdown", "Start", "Quit", "WHDLoad", "About"},
-	{"Quit", "Shutdown", "Restart", "WHDLoad", "About"},
-	{"Restart", "Quit", "Help", "WHDLoad", "About"},
-	{"Help", "Restart", "Reset", "WHDLoad", "About"},
-	{"Reset", "Help", "Start", "WHDLoad", "About"},
-	{"Start", "Reset", "Shutdown", "WHDLoad", "About"},
+	{"WHDLoad", "cmdWhdloadEject", "cmdWhdloadEject", "Virtual Keyboard", "Themes"},
+	{"Themes", "cmdThemeSaveAs", "cboThemePreset", "WHDLoad", "Quit"},
+	{"Shutdown", "Start", "Quit", "Themes", "About"},
+	{"Quit", "Shutdown", "Restart", "Themes", "About"},
+	{"Restart", "Quit", "Help", "Themes", "About"},
+	{"Help", "Restart", "Reset", "Themes", "About"},
+	{"Reset", "Help", "Start", "Themes", "About"},
+	{"Start", "Reset", "Shutdown", "Themes", "About"},
 
 	// PanelPaths
 	{"scrlPaths", "cmdSystemROMs", "Paths", "", "" },
@@ -156,12 +157,13 @@ static NavigationMap nav_map[] =
 	// PanelROM
 	{ "cboMainROM", "ROM", "MainROM", "cboCartROM", "cboExtROM" },
 	{ "MainROM", "cboMainROM", "ROM", "CartROM", "ExtROM" },
-	{ "cboExtROM", "ROM", "ExtROM", "cboMainROM", "cboCartROM" },
-	{ "ExtROM", "cboExtROM", "ROM", "MainROM", "CartROM" },
-	{ "cboCartROM", "ROM", "CartROM", "cboExtROM", "cboUAEROM" },
-	{ "CartROM", "cboCartROM", "ROM", "ExtROM", "cboUAEROM" },
+	{ "cboExtROM", "ROM", "ExtROM", "cboMainROM", "chkMapRom" },
+	{ "ExtROM", "cboExtROM", "ROM", "MainROM", "chkShapeShifter" },
+	{ "chkMapRom", "ROM", "chkShapeShifter", "cboExtROM", "cboCartROM" },
+	{ "chkShapeShifter", "chkMapRom", "ROM", "cboExtROM", "cboCartROM" },
+	{ "cboCartROM", "ROM", "CartROM", "chkMapRom", "cboUAEROM" },
+	{ "CartROM", "cboCartROM", "ROM", "chkShapeShifter", "cboUAEROM" },
 	{ "cboUAEROM", "ROM", "ROM", "cboCartROM", "chkShapeShifter" },
-	{ "chkShapeShifter", "ROM", "ROM", "cboUAEROM", "cboMainROM" },
 
 	// PanelRAM
 	{ "sldChipmem", "", "", "RAM", "sldSlowmem" },
@@ -355,11 +357,12 @@ static NavigationMap nav_map[] =
 	// active		move left		move right			move up			move down
 	// PanelIO
 	{ "cboSampler", "IO Ports", "IO Ports", "cboProtectionDongle", "cboSerialPort" },
-	{ "cboSerialPort", "IO Ports", "IO Ports", "cboSampler", "chkRTSCTS" },
-	{ "chkRTSCTS", "IO Ports", "chkSerialDirect", "cboSerialPort", "chkSerialStatus" },
+	{ "cboSerialPort", "IO Ports", "IO Ports", "cboSampler", "chkSerialShared" },
+	{ "chkSerialShared", "IO Ports", "chkRTSCTS", "cboSerialPort", "chkSerialStatus" },
+	{ "chkRTSCTS", "chkSerialShared", "chkSerialDirect", "cboSerialPort", "chkSerialStatus" },
 	{ "chkSerialDirect", "chkRTSCTS", "chkUaeSerial", "cboSerialPort", "chkSerialStatus" },
 	{ "chkUaeSerial", "chkSerialDirect", "IO Ports", "cboSerialPort", "chkSerialStatus" },
-	{ "chkSerialStatus", "IO Ports", "chkSerialStatusRi", "chkRTSCTS", "cboMidiOut" },
+	{ "chkSerialStatus", "IO Ports", "chkSerialStatusRi", "chkSerialShared", "cboMidiOut" },
 	{ "chkSerialStatusRi", "chkSerialStatus", "IO Ports", "chkUaeSerial", "cboMidiIn" },
 	{ "cboMidiOut", "IO Ports", "cboMidiIn", "chkSerialStatus", "chkMidiRoute" },
 	{ "cboMidiIn", "cboMidiOut", "chkSerialStatusRi", "chkSerialStatusRi", "chkMidiRoute" },
@@ -558,9 +561,12 @@ static NavigationMap nav_map[] =
 	{ "State11", "Savestates", "Savestates", "State10", "State12" },
 	{ "State12", "Savestates", "Savestates", "State11", "State13" },
 	{ "State13", "Savestates", "Savestates", "State12", "State14" },
-	{ "State14", "Savestates", "Savestates", "State13", "cmdLoadState" },
-	{ "cmdLoadState", "Savestates", "cmdSaveState", "State14", "State0" },
-	{ "cmdSaveState", "cmdLoadState", "Savestates", "State14", "State0" },
+	{ "State14", "Savestates", "Savestates", "State13", "cmdLoadStateSlot" },
+	{ "cmdLoadStateSlot", "Savestates", "cmdSaveStateSlot", "State14", "cmdLoadState" },
+	{ "cmdSaveStateSlot", "cmdLoadStateSlot", "cmdDeleteStateSlot", "State14", "cmdSaveState" },
+	{ "cmdDeleteStateSlot", "cmdSaveStateSlot", "Savestates", "State14", "cmdSaveState" },
+	{ "cmdLoadState", "Savestates", "cmdSaveState", "cmdLoadStateSlot", "State0" },
+	{ "cmdSaveState", "cmdLoadState", "Savestates", "cmdSaveStateSlot", "State0" },
 
 	// Virtual Keyboard
 	{ "chkVkEnabled", "Virtual Keyboard", "Virtual Keyboard", "chkRetroArchVkbd", "chkVkHires"},
@@ -577,15 +583,20 @@ static NavigationMap nav_map[] =
 	{ "cmdWhdloadEject", "WHDLoad", "cmdWhdloadSelect", "chkQuitOnExit", "cboWhdload" },
 	{ "cmdWhdloadSelect", "cmdWhdloadEject", "WHDLoad", "chkQuitOnExit", "cboWhdload" },
 	{ "cboWhdload", "WHDLoad", "WHDLoad", "cmdWhdloadSelect", "cboSlaves" },
-
 	{ "cboSlaves", "WHDLoad", "WHDLoad", "cboWhdload", "cmdCustomFields" },
-
 	{ "cmdCustomFields", "WHDLoad", "WHDLoad", "cboSlaves", "chkButtonWait" },
 	{ "chkButtonWait", "WHDLoad", "WHDLoad", "cmdCustomFields", "chkShowSplash" },
 	{ "chkShowSplash", "WHDLoad", "WHDLoad", "chkButtonWait", "chkWriteCache" },
-
 	{ "chkWriteCache", "WHDLoad", "WHDLoad", "chkShowSplash", "chkQuitOnExit" },
 	{ "chkQuitOnExit", "WHDLoad", "WHDLoad", "chkWriteCache", "cmdWhdloadEject" },
+
+	// Themes
+	{ "cboThemePreset", "Themes", "cmdThemeSave", "cmdThemeUse", "cmdThemeFont" },
+	{ "cmdThemeSave", "cboThemePreset", "cmdThemeSaveAs", "cmdThemeUse", "cmdThemeFont" },
+	{ "cmdThemeSaveAs", "cmdThemeSave", "Themes", "cmdThemeUse", "cmdThemeFont" },
+	{ "cmdThemeFont", "Themes", "Themes", "cboThemePreset", "cmdThemeUse" },
+	{ "cmdThemeUse", "Themes", "cmdThemeReset", "cmdThemeFont", "cboThemePreset" },
+	{ "cmdThemeReset", "cmdThemeUse", "Themes", "cmdThemeFont", "cboThemePreset" },
 
 	//  active            move left         move right        move up           move down
 	// EditFilesysVirtual

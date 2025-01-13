@@ -2389,10 +2389,10 @@ static bool mmu_op30fake_pflush (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecp
 	case 0x18:
 		if (mmu_op30_invea(opcode))
 			return true;
-		_stprintf (fname, _T("FC=%x MASK=%x EA=%08x"), fc, mask, 0);
+		_sntprintf (fname, sizeof fname, _T("FC=%x MASK=%x EA=%08x"), fc, mask, 0);
 		break;
 	case 0x10:
-		_stprintf (fname, _T("FC=%x MASK=%x"), fc, mask);
+		_sntprintf (fname, sizeof fname, _T("FC=%x MASK=%x"), fc, mask);
 		break;
 	case 0x04:
 		if (fc_bits)

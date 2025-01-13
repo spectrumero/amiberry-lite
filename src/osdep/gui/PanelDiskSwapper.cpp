@@ -229,7 +229,6 @@ void InitPanelDiskSwapper(const config_category& category)
 {
 	int row, column;
 	auto posY = DISTANCE_BORDER / 2;
-	char tmp[20];
 
 	diskSwapperAddActionListener = new DiskSwapperAddActionListener();
 	diskSwapperDelActionListener = new DiskSwapperDelActionListener();
@@ -241,6 +240,7 @@ void InitPanelDiskSwapper(const config_category& category)
 
 	for (row = 0; row < MAX_SPARE_DRIVES; ++row)
 	{
+		char tmp[20];
 		diskSwapperListEntry[row] = new gcn::Container();
 		diskSwapperListEntry[row]->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, SMALL_BUTTON_HEIGHT + 4);
 		diskSwapperListEntry[row]->setBaseColor(gui_base_color);
@@ -269,7 +269,7 @@ void InitPanelDiskSwapper(const config_category& category)
 			diskSwapperListCells[row][column]->setSize(diskswapper_column_size[column], SMALL_BUTTON_HEIGHT);
 			diskSwapperListCells[row][column]->setEnabled(false);
 			diskSwapperListCells[row][column]->setBaseColor(gui_base_color);
-			diskSwapperListCells[row][column]->setBackgroundColor(gui_textbox_background_color);
+			diskSwapperListCells[row][column]->setBackgroundColor(gui_background_color);
 			diskSwapperListCells[row][column]->setForegroundColor(gui_foreground_color);
 			if (column == 0)
 				diskSwapperListCells[row][column]->setText(std::to_string(row + 1));
@@ -370,7 +370,7 @@ void RefreshPanelDiskSwapper()
 			const int drv = disk_in_drive(row);
 			tmp[0] = 0;
 			if (drv >= 0)
-				_stprintf(tmp, _T("DF%d:"), drv);
+				_sntprintf(tmp, sizeof tmp, _T("DF%d:"), drv);
 			cmdDiskSwapperListDrive[row]->setCaption(tmp);
 		}
 		else

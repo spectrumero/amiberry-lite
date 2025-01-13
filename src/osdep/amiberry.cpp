@@ -6,6 +6,7 @@
  */
 
 #include <unistd.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <sys/types.h>
@@ -14,6 +15,7 @@
 #include <ctime>
 #include <csignal>
 #include <iostream>
+#include <fstream>
 #include <filesystem>
 
 #include <algorithm>
@@ -53,12 +55,14 @@
 #ifdef FLOPPYBRIDGE
 #include "floppybridge_lib.h"
 #endif
+#include "registry.h"
 #include "threaddep/thread.h"
 #include "uae/uae.h"
 #include "sana2.h"
 
 #ifdef __MACH__
 #include <string>
+#include <mach-o/dyld.h>
 #endif
 
 #ifdef AHI
@@ -87,11 +91,14 @@ struct gpiod_line* lineYellow; // Yellow LED
 SDL_threadID mainthreadid;
 static int logging_started;
 int log_scsi;
+int log_net;
 int log_vsync, debug_vsync_min_delay, debug_vsync_forced_delay;
 int uaelib_debug;
 int pissoff_value = 15000 * CYCLE_UNIT;
 
+static TCHAR* inipath = nullptr;
 extern FILE* debugfile;
+static int forceroms;
 SDL_Cursor* normalcursor;
 
 int paraport_mask;
@@ -106,15 +113,19 @@ int mouseactive;
 int minimized;
 int monitor_off;
 
+static SDL_cond* cpu_wakeup_event;
+static SDL_mutex* cpu_wakeup_mutex;
+static volatile bool cpu_wakeup_event_triggered;
+
 int quickstart_model = 0;
 int quickstart_conf = 0;
 bool host_poweroff = false;
 int relativepaths = 0;
 int saveimageoriginalpath = 0;
 
-struct whdload_options whdload_prefs = {};
+whdload_options whdload_prefs = {};
 struct amiberry_options amiberry_options = {};
-struct amiberry_gui_theme gui_theme = {};
+amiberry_gui_theme gui_theme = {};
 amiberry_hotkey enter_gui_key;
 SDL_GameControllerButton enter_gui_button;
 amiberry_hotkey quit_key;
@@ -129,7 +140,10 @@ bool mouse_grabbed = false;
 
 std::string get_version_string()
 {
-	return AMIBERRYVERSION;
+	const auto pre_release_string = std::string(AMIBERRY_VERSION_PRE_RELEASE);
+	if (pre_release_string.empty())
+		return "Amiberry " + std::string(AMIBERRY_VERSION);
+	return "Amiberry " + std::string(AMIBERRY_VERSION) + "-" + std::string(AMIBERRY_VERSION_PRE_RELEASE);
 }
 
 std::string get_copyright_notice()
@@ -160,7 +174,7 @@ std::vector<int> parse_color_string(const std::string& input)
 	return result;
 }
 
-amiberry_hotkey get_hotkey_from_config(std::string config_option)
+static amiberry_hotkey get_hotkey_from_config(std::string config_option)
 {
 	amiberry_hotkey hotkey = {};
 	std::string delimiter = "+";
@@ -206,7 +220,7 @@ amiberry_hotkey get_hotkey_from_config(std::string config_option)
 	return hotkey;
 }
 
-void set_key_configs(struct uae_prefs* p)
+static void set_key_configs(const uae_prefs* p)
 {
 	if (strncmp(p->open_gui, "", 1) != 0)
 		// If we have a value in the config, we use that instead
@@ -269,7 +283,7 @@ extern void signal_segv(int signum, siginfo_t* info, void* ptr);
 extern void signal_buserror(int signum, siginfo_t* info, void* ptr);
 extern void signal_term(int signum, siginfo_t* info, void* ptr);
 
-extern void SetLastActiveConfig(const char* filename);
+extern void set_last_active_config(const char* filename);
 
 std::string home_dir;
 std::string current_dir;
@@ -304,14 +318,29 @@ std::string screenshot_dir;
 std::string nvram_dir;
 std::string plugins_dir;
 std::string video_dir;
+std::string themes_path;
 std::string amiberry_conf_file;
+std::string amiberry_ini_file;
 
-char last_loaded_config[MAX_DPATH] = {'\0'};
+char last_loaded_config[MAX_DPATH] = {};
+char last_active_config[MAX_DPATH] = {};
 
 int max_uae_width;
 int max_uae_height;
 
 extern "C" int main(int argc, char* argv[]);
+
+void set_last_loaded_config(const char* filename)
+{
+	extract_filename(filename, last_loaded_config);
+	remove_file_extension(last_loaded_config);
+}
+
+void set_last_active_config(const char* filename)
+{
+	extract_filename(filename, last_active_config);
+	remove_file_extension(last_active_config);
+}
 
 int getdpiforwindow(SDL_Window* hwnd)
 {
@@ -330,8 +359,7 @@ void target_spin(int total)
 {
 	if (!spincount || calculated_scanline)
 		return;
-	if (total > 10)
-		total = 10;
+	total = std::min(total, 10);
 	while (total-- >= 0) {
 		uae_s64 v1 = read_processor_time();
 		v1 += spincount;
@@ -341,42 +369,82 @@ void target_spin(int total)
 
 extern int vsync_activeheight;
 
-void target_calibrate_spin(void)
+void target_calibrate_spin()
 {
 	spincount = 0;
 }
 
-void sleep_micros (int ms)
+static int init_mmtimer()
+{
+	cpu_wakeup_event = SDL_CreateCond();
+	cpu_wakeup_mutex = SDL_CreateMutex();
+	if (!cpu_wakeup_event || !cpu_wakeup_mutex) {
+		write_log(_T("Failed to create CPU wakeup event/mutex\n"));
+		return 0;
+	}
+	return 1;
+}
+
+void sleep_cpu_wakeup()
+{
+	if (!cpu_wakeup_event_triggered) {
+		cpu_wakeup_event_triggered = true;
+		SDL_CondSignal(cpu_wakeup_event);
+	}
+}
+
+int get_sound_event();
+
+static int sleep_millis2(int ms, const bool main)
+{
+	frame_time_t start = 0;
+
+	if (ms < 0)
+		ms = -ms;
+	if (main) {
+		if (SDL_CondWaitTimeout(cpu_wakeup_event, cpu_wakeup_mutex, 0) == 0) {
+			return 0;
+		}
+		start = read_processor_time();
+
+		SDL_Delay(ms);
+		//SDL_CondWaitTimeout(cpu_wakeup_event, cpu_wakeup_mutex, ms);
+		cpu_wakeup_event_triggered = false;
+	}
+	else {
+		SDL_Delay(ms);
+	}
+
+	if (main)
+		idletime += read_processor_time() - start;
+	return 0;
+}
+
+void sleep_micros (const int ms)
 {
 	usleep(ms);
 }
 
-void sleep_millis(int ms)
+int sleep_millis_main(const int ms)
 {
-	SDL_Delay(ms);
+	return sleep_millis2(ms, true);
+}
+int sleep_millis(const int ms)
+{
+	return sleep_millis2(ms, false);
 }
 
-int sleep_millis_main(int ms)
+static void setcursor(AmigaMonitor* mon, int oldx, int oldy)
 {
-	const auto start = read_processor_time();
-	SDL_Delay(ms);
-	idletime += read_processor_time() - start;
-	return 0;
-}
-
-static void setcursor(struct AmigaMonitor* mon, int oldx, int oldy)
-{
-	int dx = (mon->amigawinclip_rect.x - mon->amigawin_rect.x) + ((mon->amigawinclip_rect.x + mon->amigawinclip_rect.w) - mon->amigawinclip_rect.x) / 2;
-	int dy = (mon->amigawinclip_rect.y - mon->amigawin_rect.y) + ((mon->amigawinclip_rect.y + mon->amigawinclip_rect.h) - mon->amigawinclip_rect.y) / 2;
+	const int dx = (mon->amigawinclip_rect.x - mon->amigawin_rect.x) + ((mon->amigawinclip_rect.x + mon->amigawinclip_rect.w) - mon->amigawinclip_rect.x) / 2;
+	const int dy = (mon->amigawinclip_rect.y - mon->amigawin_rect.y) + ((mon->amigawinclip_rect.y + mon->amigawinclip_rect.h) - mon->amigawinclip_rect.y) / 2;
 	mon->mouseposx = oldx - dx;
 	mon->mouseposy = oldy - dy;
 
 	mon->windowmouse_max_w = mon->amigawinclip_rect.w / 2 - 50;
 	mon->windowmouse_max_h = mon->amigawinclip_rect.h / 2 - 50;
-	if (mon->windowmouse_max_w < 10)
-		mon->windowmouse_max_w = 10;
-	if (mon->windowmouse_max_h < 10)
-		mon->windowmouse_max_h = 10;
+	mon->windowmouse_max_w = std::max(mon->windowmouse_max_w, 10);
+	mon->windowmouse_max_h = std::max(mon->windowmouse_max_h, 10);
 
 	if ((currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC) && currprefs.input_tablet > 0 && mousehack_alive() && isfullscreen() <= 0) {
 		mon->mouseposx = mon->mouseposy = 0;
@@ -395,15 +463,15 @@ static void setcursor(struct AmigaMonitor* mon, int oldx, int oldy)
 			mon->amigawin_rect.x, mon->amigawin_rect.y, mon->amigawin_rect.w, mon->amigawin_rect.h);
 		return;
 	}
-	int cx = mon->amigawinclip_rect.w / 2 + mon->amigawin_rect.x + (mon->amigawinclip_rect.x - mon->amigawin_rect.x);
-	int cy = mon->amigawinclip_rect.h / 2 + mon->amigawin_rect.y + (mon->amigawinclip_rect.y - mon->amigawin_rect.y);
+	const int cx = mon->amigawinclip_rect.w / 2 + mon->amigawin_rect.x + (mon->amigawinclip_rect.x - mon->amigawin_rect.x);
+	const int cy = mon->amigawinclip_rect.h / 2 + mon->amigawin_rect.y + (mon->amigawinclip_rect.y - mon->amigawin_rect.y);
 
 	SDL_WarpMouseGlobal(cx, cy);
 }
 
 static int mon_cursorclipped;
 static int pausemouseactive;
-void resumesoundpaused(void)
+void resumesoundpaused()
 {
 	resume_sound();
 #ifdef AHI
@@ -414,7 +482,7 @@ void resumesoundpaused(void)
 #endif
 }
 
-void setsoundpaused(void)
+void setsoundpaused()
 {
 	pause_sound();
 #ifdef AHI
@@ -425,9 +493,9 @@ void setsoundpaused(void)
 #endif
 }
 
-bool resumepaused(int priority)
+bool resumepaused(const int priority)
 {
-	struct AmigaMonitor* mon = &AMonitors[0];
+	const AmigaMonitor* mon = &AMonitors[0];
 	if (pause_emulation > priority)
 		return false;
 	if (!pause_emulation)
@@ -447,9 +515,9 @@ bool resumepaused(int priority)
 	return true;
 }
 
-bool setpaused(int priority)
+bool setpaused(const int priority)
 {
-	struct AmigaMonitor* mon = &AMonitors[0];
+	const AmigaMonitor* mon = &AMonitors[0];
 	if (pause_emulation > priority)
 		return false;
 	pause_emulation = priority;
@@ -463,14 +531,14 @@ bool setpaused(int priority)
 	return true;
 }
 
-void setminimized(int monid)
+void setminimized(const int monid)
 {
 	if (!minimized)
 		minimized = 1;
 	set_inhibit_frame(monid, IHF_WINDOWHIDDEN);
 }
 
-void unsetminimized(int monid)
+void unsetminimized(const int monid)
 {
 	if (minimized > 0)
 		full_redraw_all();
@@ -478,7 +546,7 @@ void unsetminimized(int monid)
 	clear_inhibit_frame(monid, IHF_WINDOWHIDDEN);
 }
 
-void refreshtitle(void)
+void refreshtitle()
 {
 	//for (int i = 0; i < MAX_AMIGAMONITORS; i++) {
 	//	struct AmigaMonitor* mon = &AMonitors[i];
@@ -488,7 +556,7 @@ void refreshtitle(void)
 	//}
 }
 
-void setpriority(int prio)
+void setpriority(const int prio)
 {
 	if (prio >= 0 && prio <= 2)
 	{
@@ -509,9 +577,9 @@ void setpriority(int prio)
 	}
 }
 
-static void setcursorshape(int monid)
+static void setcursorshape(const int monid)
 {
-	struct AmigaMonitor* mon = &AMonitors[monid];
+	const AmigaMonitor* mon = &AMonitors[monid];
 	if (currprefs.input_tablet && currprefs.input_magic_mouse_cursor == MAGICMOUSE_NATIVE_ONLY) {
 		if (mon->screen_is_picasso && currprefs.rtg_hardwaresprite)
 			SDL_ShowCursor(SDL_ENABLE);
@@ -524,10 +592,10 @@ static void setcursorshape(int monid)
 	}
 }
 
-void set_showcursor(BOOL v)
+void set_showcursor(const BOOL v)
 {
 	if (v) {
-		int vv = SDL_ShowCursor(SDL_ENABLE);
+		const int vv = SDL_ShowCursor(SDL_ENABLE);
 		if (vv > 1) {
 			SDL_ShowCursor(SDL_DISABLE);
 		}
@@ -546,7 +614,7 @@ void set_showcursor(BOOL v)
 	}
 }
 
-void releasecapture(struct AmigaMonitor* mon)
+void releasecapture(const AmigaMonitor* mon)
 {
 	SDL_SetWindowGrab(mon->amiga_window, SDL_FALSE);
 	SDL_SetRelativeMouseMode(SDL_FALSE);
@@ -554,7 +622,7 @@ void releasecapture(struct AmigaMonitor* mon)
 	mon_cursorclipped = 0;
 }
 
-void updatemouseclip(struct AmigaMonitor* mon)
+void updatemouseclip(AmigaMonitor* mon)
 {
 	if (mon_cursorclipped) {
 		mon->amigawinclip_rect = mon->amigawin_rect;
@@ -575,7 +643,7 @@ void updatemouseclip(struct AmigaMonitor* mon)
 	}
 }
 
-void updatewinrect(struct AmigaMonitor* mon, bool allowfullscreen)
+void updatewinrect(AmigaMonitor* mon, const bool allowfullscreen)
 {
 	int f = isfullscreen();
 	if (!allowfullscreen && f > 0)
@@ -593,10 +661,10 @@ void updatewinrect(struct AmigaMonitor* mon, bool allowfullscreen)
 	}
 }
 
-static bool iswindowfocus(struct AmigaMonitor* mon)
+static bool iswindowfocus(const AmigaMonitor* mon)
 {
 	bool donotfocus = false;
-	Uint32 flags = SDL_GetWindowFlags(mon->amiga_window);
+	const Uint32 flags = SDL_GetWindowFlags(mon->amiga_window);
 
 	if (!(flags & SDL_WINDOW_INPUT_FOCUS)) {
 		donotfocus = true;
@@ -607,15 +675,15 @@ static bool iswindowfocus(struct AmigaMonitor* mon)
 	return donotfocus == false;
 }
 
-bool ismouseactive (void)
+bool ismouseactive ()
 {
 	return mouseactive > 0;
 }
 
 //TODO: maybe implement this
-void target_inputdevice_unacquire(bool full)
+void target_inputdevice_unacquire(const bool full)
 {
-	struct AmigaMonitor* mon = &AMonitors[0];
+	const AmigaMonitor* mon = &AMonitors[0];
 	//close_tablet(tablet);
 	//tablet = NULL;
 	if (full) {
@@ -623,23 +691,23 @@ void target_inputdevice_unacquire(bool full)
 		SDL_SetWindowGrab(mon->amiga_window, SDL_FALSE);
 	}
 }
-void target_inputdevice_acquire(void)
+void target_inputdevice_acquire()
 {
-	struct AmigaMonitor* mon = &AMonitors[0];
+	const AmigaMonitor* mon = &AMonitors[0];
 	target_inputdevice_unacquire(false);
 	//tablet = open_tablet(mon->hAmigaWnd);
 	//rawinput_alloc();
 	SDL_SetWindowGrab(mon->amiga_window, SDL_TRUE);
 }
 
-static void setmouseactive2(struct AmigaMonitor* mon, int active, bool allowpause)
+static void setmouseactive2(AmigaMonitor* mon, int active, const bool allowpause)
 {
 #ifdef RETROPLATFORM
 	bool isrp = rp_isactive() != 0;
 #else
 	bool isrp = false;
 #endif
-	int lastmouseactive = mouseactive;
+	const int lastmouseactive = mouseactive;
 
 	if (active == 0)
 		releasecapture(mon);
@@ -723,9 +791,9 @@ static void setmouseactive2(struct AmigaMonitor* mon, int active, bool allowpaus
 	}
 }
 
-void setmouseactive(int monid, int active)
+void setmouseactive(const int monid, const int active)
 {
-	struct AmigaMonitor* mon = &AMonitors[monid];
+	AmigaMonitor* mon = &AMonitors[monid];
 	monitor_off = 0;
 	if (active > 1)
 		SDL_RaiseWindow(mon->amiga_window);
@@ -733,13 +801,13 @@ void setmouseactive(int monid, int active)
 	setcursorshape(monid);
 }
 
-static void amiberry_active(struct AmigaMonitor* mon, int minimized)
+static void amiberry_active(const AmigaMonitor* mon, const int is_minimized)
 {
 	monitor_off = 0;
 	
 	focus = mon->monitor_id + 1;
 	auto pri = currprefs.inactive_priority;
-	if (!minimized)
+	if (!is_minimized)
 		pri = currprefs.active_capture_priority;
 	setpriority(pri);
 
@@ -769,7 +837,7 @@ static void amiberry_active(struct AmigaMonitor* mon, int minimized)
 	clipboard_active(1, 1);
 }
 
-static void amiberry_inactive(struct AmigaMonitor* mon, int minimized)
+static void amiberry_inactive(const AmigaMonitor* mon, const int is_minimized)
 {
 	focus = 0;
 	recapture = 0;
@@ -778,7 +846,7 @@ static void amiberry_inactive(struct AmigaMonitor* mon, int minimized)
 	clipboard_active(1, 0);
 	auto pri = currprefs.inactive_priority;
 	if (!quit_program) {
-		if (minimized) {
+		if (is_minimized) {
 			pri = currprefs.minimized_priority;
 			if (currprefs.minimized_pause) {
 				inputdevice_unacquire();
@@ -834,14 +902,14 @@ static void amiberry_inactive(struct AmigaMonitor* mon, int minimized)
 #endif
 }
 
-void minimizewindow(int monid)
+void minimizewindow(const int monid)
 {
-	struct AmigaMonitor* mon = &AMonitors[monid];
+	const AmigaMonitor* mon = &AMonitors[monid];
 	if (mon->amiga_window)
 		SDL_MinimizeWindow(mon->amiga_window);
 }
 
-void enablecapture(int monid)
+void enablecapture(const int monid)
 {
 	if (pause_emulation > 2)
 		return;
@@ -869,10 +937,10 @@ void disablecapture()
 	}
 }
 
-void setmouseactivexy(int monid, int x, int y, int dir)
+void setmouseactivexy(const int monid, int x, int y, const int dir)
 {
-	struct AmigaMonitor* mon = &AMonitors[monid];
-	int diff = 8;
+	const AmigaMonitor* mon = &AMonitors[monid];
+	constexpr int diff = 8;
 
 	if (isfullscreen() > 0)
 		return;
@@ -921,7 +989,7 @@ int isfocus()
 	return 0;
 }
 
-void activationtoggle(int monid, bool inactiveonly)
+void activationtoggle(const int monid, const bool inactiveonly)
 {
 	if (mouseactive) {
 		if ((isfullscreen() > 0) || (isfullscreen() < 0 && currprefs.minimize_inactive)) {
@@ -948,7 +1016,7 @@ static SDL_TimerID device_change_timer;
 static int is_in_media_queue(const TCHAR* drvname)
 {
 	for (int i = 0; i < MEDIA_INSERT_QUEUE_SIZE; i++) {
-		if (media_insert_queue[i] != NULL) {
+		if (media_insert_queue[i] != nullptr) {
 			if (!_tcsicmp(drvname, media_insert_queue[i]))
 				return i;
 		}
@@ -1027,18 +1095,17 @@ static void start_media_insert_timer()
 	//}
 }
 
-static void add_media_insert_queue(const TCHAR* drvname, int retrycnt)
+static void add_media_insert_queue(const TCHAR* drvname, const int retrycnt)
 {
-	int idx = is_in_media_queue(drvname);
+	const int idx = is_in_media_queue(drvname);
 	if (idx >= 0) {
-		if (retrycnt > media_insert_queue_type[idx])
-			media_insert_queue_type[idx] = retrycnt;
+		media_insert_queue_type[idx] = std::max(retrycnt, media_insert_queue_type[idx]);
 		write_log(_T("%s already queued for insertion, cnt=%d.\n"), drvname, retrycnt);
 		start_media_insert_timer();
 		return;
 	}
 	for (int i = 0; i < MEDIA_INSERT_QUEUE_SIZE; i++) {
-		if (media_insert_queue[i] == NULL) {
+		if (media_insert_queue[i] == nullptr) {
 			media_insert_queue[i] = my_strdup(drvname);
 			media_insert_queue_type[i] = retrycnt;
 			start_media_insert_timer();
@@ -1059,9 +1126,9 @@ struct touch_store
 	int button;
 	int axis;
 };
-static struct touch_store touches[MAX_TOUCHES];
+static touch_store touches[MAX_TOUCHES];
 
-static void touch_release(struct touch_store* ts, const SDL_Rect* rcontrol)
+static void touch_release(touch_store* ts, const SDL_Rect* rcontrol)
 {
 	if (ts->port == 0) {
 		if (ts->button == 0)
@@ -1089,14 +1156,14 @@ static void touch_release(struct touch_store* ts, const SDL_Rect* rcontrol)
 	ts->axis = -1;
 }
 
-static void tablet_touch(unsigned long id, int pressrel, int x, int y, const SDL_Rect* rcontrol)
+static void tablet_touch(unsigned long id, int pressrel, const int x, const int y, const SDL_Rect* rcontrol)
 {
-	struct touch_store* ts = NULL;
-	int buttony = rcontrol->h - (rcontrol->h - rcontrol->y) / 4;
+	touch_store* ts = nullptr;
+	const int buttony = rcontrol->h - (rcontrol->h - rcontrol->y) / 4;
 
 	int new_slot = -1;
 	for (int i = 0; i < MAX_TOUCHES; i++) {
-		struct touch_store* tts = &touches[i];
+		touch_store* tts = &touches[i];
 		if (!tts->inuse && new_slot < 0)
 			new_slot = i;
 		if (tts->inuse && tts->id == id) {
@@ -1143,7 +1210,7 @@ static void tablet_touch(unsigned long id, int pressrel, int x, int y, const SDL
 				// move? port can't change, axis<>button not allowed
 				if (ts->port == i) {
 					if (y >= buttony && ts->button >= 0) {
-						int button = x > r->x + (r->w - r->x) / 2 ? 1 : 0;
+						const int button = x > r->x + (r->w - r->x) / 2 ? 1 : 0;
 						if (button != ts->button) {
 							// button change, release old button
 							touch_release(ts, rcontrol);
@@ -1230,19 +1297,19 @@ static void tablet_touch(unsigned long id, int pressrel, int x, int y, const SDL
 	}
 }
 
-static void touch_event(unsigned long id, int pressrel, int x, int y, const SDL_Rect* rcontrol)
+static void touch_event(const unsigned long id, const int pressrel, const int x, const int y, const SDL_Rect* rcontrol)
 {
 	// No lightpen support (yet?)
 	tablet_touch(id, pressrel, x, y, rcontrol);
 }
 
-void handle_focus_gained_event(AmigaMonitor* mon)
+void handle_focus_gained_event(const AmigaMonitor* mon)
 {
 	amiberry_active(mon, minimized);
 	unsetminimized(mon->monitor_id);
 }
 
-void handle_minimized_event(AmigaMonitor* mon)
+void handle_minimized_event(const AmigaMonitor* mon)
 {
 	if (!minimized)
 	{
@@ -1252,7 +1319,7 @@ void handle_minimized_event(AmigaMonitor* mon)
 	}
 }
 
-void handle_restored_event(AmigaMonitor* mon)
+void handle_restored_event(const AmigaMonitor* mon)
 {
 	amiberry_active(mon, minimized);
 	unsetminimized(mon->monitor_id);
@@ -1282,7 +1349,7 @@ void handle_leave_event()
 	mouseinside = false;
 }
 
-void handle_focus_lost_event(AmigaMonitor* mon)
+void handle_focus_lost_event(const AmigaMonitor* mon)
 {
 	amiberry_inactive(mon, minimized);
 	if (isfullscreen() <= 0 && currprefs.minimize_inactive)
@@ -1566,10 +1633,35 @@ void handle_mouse_motion_event(const SDL_Event& event, const AmigaMonitor* mon)
 	if (isfocus() <= 0) return;
 
 	const auto is_picasso = mon->screen_is_picasso;
-	const auto x = event.motion.x;
-	const auto y = event.motion.y;
-	const auto xrel = event.motion.xrel;
-	const auto yrel = event.motion.yrel;
+	Sint32 x, y, xrel, yrel;
+	if (amiberry_options.rotation_angle == 0)
+	{
+		x = event.motion.x;
+		y = event.motion.y;
+		xrel = event.motion.xrel;
+		yrel = event.motion.yrel;
+	}
+	else if (amiberry_options.rotation_angle == 180)
+	{
+		x = -event.motion.x;
+		y = -event.motion.y;
+		xrel = -event.motion.xrel;
+		yrel = -event.motion.yrel;
+	}
+	else if (amiberry_options.rotation_angle == 90)
+	{
+		x = event.motion.y;
+		y = -event.motion.x;
+		xrel = event.motion.yrel;
+		yrel = -event.motion.xrel;
+	}
+	else // -90
+	{
+		x = -event.motion.y;
+		y = event.motion.x;
+		xrel = -event.motion.yrel;
+		yrel = event.motion.xrel;
+	}
 
 	if (currprefs.input_tablet >= TABLET_MOUSEHACK)
 	{
@@ -1699,7 +1791,7 @@ void update_clipboard()
 	}
 }
 
-static int canstretch(struct AmigaMonitor* mon)
+static int canstretch(const AmigaMonitor* mon)
 {
 	if (isfullscreen() != 0)
 		return 0;
@@ -1802,10 +1894,11 @@ void logging_init()
 		first++;
 		write_log("%s Logfile\n\n", get_version_string().c_str());
 		write_log("%s\n", get_sdl2_version_string().c_str());
+		regstatus();
 	}
 }
 
-void logging_cleanup(void)
+void logging_cleanup()
 {
 	if (debugfile)
 		fclose(debugfile);
@@ -1814,17 +1907,15 @@ void logging_cleanup(void)
 
 uae_u8* save_log(int bootlog, size_t* len)
 {
-	FILE* f;
-	uae_u8* dst = NULL;
-	int size;
+	uae_u8* dst = nullptr;
 
 	if (!logging_started)
-		return NULL;
-	f = fopen(logfile_path.c_str(), _T("rb"));
+		return nullptr;
+	FILE* f = fopen(logfile_path.c_str(), _T("rb"));
 	if (!f)
-		return NULL;
+		return nullptr;
 	fseek(f, 0, SEEK_END);
-	size = ftell(f);
+	size_t size = ftell(f);
 	fseek(f, 0, SEEK_SET);
 	if (*len > 0 && size > *len)
 		size = *len;
@@ -1868,7 +1959,7 @@ void fullpath(TCHAR* path, int size, bool userelative)
 	// Resolve absolute path
 	TCHAR tmp1[MAX_DPATH];
 	tmp1[0] = 0;
-	if (realpath(path, tmp1) != NULL)
+	if (realpath(path, tmp1) != nullptr)
 	{
 		if (_tcsnicmp(path, tmp1, _tcslen(tmp1)) != 0)
 			_tcscpy(path, tmp1);
@@ -1876,12 +1967,12 @@ void fullpath(TCHAR* path, int size, bool userelative)
 }
 
 // convert path to absolute
-void fullpath(TCHAR* path, int size)
+void fullpath(TCHAR* path, const int size)
 {
 	fullpath(path, size, relativepaths);
 }
 
-bool target_isrelativemode(void)
+bool target_isrelativemode()
 {
 	return relativepaths != 0;
 }
@@ -1912,7 +2003,7 @@ void getfilepart(TCHAR* out, int size, const TCHAR* path)
 		_tcscpy(out, path);
 }
 
-uae_u8* target_load_keyfile(struct uae_prefs* p, const char* path, int* sizep, char* name)
+uae_u8* target_load_keyfile(uae_prefs* p, const char* path, int* sizep, char* name)
 {
 	return nullptr;
 }
@@ -1943,7 +2034,7 @@ void replace(std::string& str, const std::string& from, const std::string& to)
 
 void target_execute(const char* command)
 {
-	struct AmigaMonitor* mon = &AMonitors[0];
+	AmigaMonitor* mon = &AMonitors[0];
 	releasecapture(mon);
 	mouseactive = 0;
 
@@ -1996,17 +2087,17 @@ void target_execute(const char* command)
 	}
 }
 
-void target_run(void)
+void target_run()
 {
 	// Reset counter for access violations
 	init_max_signals();
 }
 
-void target_quit(void)
+void target_quit()
 {
 }
 
-void target_fixup_options(struct uae_prefs* p)
+void target_fixup_options(uae_prefs* p)
 {
 	if (p->automount_cddrives && !p->scsi)
 		p->scsi = 1;
@@ -2038,11 +2129,7 @@ void target_fixup_options(struct uae_prefs* p)
 	
 #ifdef AMIBERRY
 	// Some old configs might have lower values there. Ensure they are updated
-	if (p->gfx_api < 2)
-		p->gfx_api = 2;
-
-	// Always use these pixel formats, for optimal performance
-	p->picasso96_modeflags = RGBFF_CLUT | RGBFF_R5G6B5PC | RGBFF_R8G8B8A8;
+	p->gfx_api = std::max(p->gfx_api, 2);
 
 	if (p->gfx_auto_crop)
 	{
@@ -2065,21 +2152,21 @@ void target_fixup_options(struct uae_prefs* p)
 		p->rtg_hardwaresprite = false;
 #endif
 
-	struct MultiDisplay* md = getdisplay(p, 0);
-	for (int j = 0; j < MAX_AMIGADISPLAYS; j++) {
-		if (p->gfx_monitor[j].gfx_size_fs.special == WH_NATIVE) {
+	const MultiDisplay* md = getdisplay(p, 0);
+	for (auto & j : p->gfx_monitor) {
+		if (j.gfx_size_fs.special == WH_NATIVE) {
 			int i;
 			for (i = 0; md->DisplayModes[i].depth >= 0; i++) {
 				if (md->DisplayModes[i].res.width == md->rect.w - md->rect.x &&
 					md->DisplayModes[i].res.height == md->rect.h - md->rect.y) {
-					p->gfx_monitor[j].gfx_size_fs.width = md->DisplayModes[i].res.width;
-					p->gfx_monitor[j].gfx_size_fs.height = md->DisplayModes[i].res.height;
-					write_log(_T("Native resolution: %dx%d\n"), p->gfx_monitor[j].gfx_size_fs.width, p->gfx_monitor[j].gfx_size_fs.height);
+					j.gfx_size_fs.width = md->DisplayModes[i].res.width;
+					j.gfx_size_fs.height = md->DisplayModes[i].res.height;
+					write_log(_T("Native resolution: %dx%d\n"), j.gfx_size_fs.width, j.gfx_size_fs.height);
 					break;
 				}
 			}
 			if (md->DisplayModes[i].depth < 0) {
-				p->gfx_monitor[j].gfx_size_fs.special = 0;
+				j.gfx_size_fs.special = 0;
 				write_log(_T("Native resolution not found.\n"));
 			}
 		}
@@ -2115,7 +2202,7 @@ void target_fixup_options(struct uae_prefs* p)
 #endif
 }
 
-void target_default_options(struct uae_prefs* p, int type)
+void target_default_options(uae_prefs* p, const int type)
 {
 	//TCHAR buf[MAX_DPATH];
 	if (type == 2 || type == 0 || type == 3) {
@@ -2167,9 +2254,8 @@ void target_default_options(struct uae_prefs* p, int type)
 		//p->commandpathstart[0] = 0;
 		//p->commandpathend[0] = 0;
 		//p->statusbar = 1;
-		p->gfx_api = 2;
-		if (p->gfx_api > 1)
-			p->color_mode = 5;
+		p->gfx_api = 4;
+		p->color_mode = 5;
 		if (p->gf[GF_NORMAL].gfx_filter == 0)
 			p->gf[GF_NORMAL].gfx_filter = 1;
 		if (p->gf[GF_RTG].gfx_filter == 0)
@@ -2186,7 +2272,7 @@ void target_default_options(struct uae_prefs* p, int type)
 		p->automount_removable = false;
 		//p->automount_drives = 0;
 		//p->automount_removabledrives = 0;
-		p->automount_cddrives = true;
+		p->automount_cddrives = false;
 		//p->automount_netdrives = 0;
 		p->picasso96_modeflags = RGBFF_CLUT | RGBFF_R5G6B5PC | RGBFF_R8G8B8A8;
 		//p->filesystem_mangle_reserved_names = true;
@@ -2333,182 +2419,9 @@ void target_default_options(struct uae_prefs* p, int type)
 		_tcscpy(p->vkbd_style, ""); // This will use the default theme.
 	p->vkbd_transparency = amiberry_options.default_vkbd_transparency;
 	_tcscpy(p->vkbd_toggle, amiberry_options.default_vkbd_toggle);
-
-	//
-	// GUI Theme section
-	//
-	// Font name
-	if (amiberry_options.gui_theme_font_name[0])
-		gui_theme.font_name = std::string(amiberry_options.gui_theme_font_name);
-	else
-		gui_theme.font_name = "AmigaTopaz.ttf";
-
-	// Font size
-	gui_theme.font_size = amiberry_options.gui_theme_font_size > 0 ? amiberry_options.gui_theme_font_size : 15;
-
-	// Base Color
-	if (amiberry_options.gui_theme_base_color[0])
-	{
-		// parse string as comma-separated numbers
-		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_base_color);
-		if (result.size() == 3)
-		{
-			gui_theme.base_color = gcn::Color(result[0], result[1], result[2]);
-		}
-		else if (result.size() == 4)
-		{
-			gui_theme.base_color = gcn::Color(result[0], result[1], result[2], result[3]);
-		}
-		else
-		{
-			gui_theme.base_color = gcn::Color(170, 170, 170);
-		}
-	}
-	else
-	{
-		gui_theme.base_color = gcn::Color(170, 170, 170);
-	}
-
-	// Font color
-	if (amiberry_options.gui_theme_font_color[0])
-	{
-		// parse string as comma-separated numbers
-		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_font_color);
-		if (result.size() == 3)
-		{
-			gui_theme.font_color = gcn::Color(result[0], result[1], result[2]);
-		}
-		else if (result.size() == 4)
-		{
-			gui_theme.font_color = gcn::Color(result[0], result[1], result[2], result[3]);
-		}
-		else
-		{
-			gui_theme.font_color = gcn::Color(0, 0, 0);
-		}
-	}
-	else
-	{
-		gui_theme.font_color = gcn::Color(0, 0, 0);
-	}
-
-	// Selector Inactive
-	if (amiberry_options.gui_theme_selector_inactive[0])
-	{
-		// parse string as comma-separated numbers
-		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_selector_inactive);
-		if (result.size() == 3)
-		{
-			gui_theme.selector_inactive = gcn::Color(result[0], result[1], result[2]);
-		}
-		else if (result.size() == 4)
-		{
-			gui_theme.selector_inactive = gcn::Color(result[0], result[1], result[2], result[3]);
-		}
-		else
-		{
-			gui_theme.selector_inactive = gcn::Color(170, 170, 170);
-		}
-	}
-	else
-	{
-		gui_theme.selector_inactive = gcn::Color(170, 170, 170);
-	}
-
-	// Selector Active
-	if (amiberry_options.gui_theme_selector_active[0])
-	{
-		// parse string as comma-separated numbers
-		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_selector_active);
-		if (result.size() == 3)
-		{
-			gui_theme.selector_active = gcn::Color(result[0], result[1], result[2]);
-		}
-		else if (result.size() == 4)
-		{
-			gui_theme.selector_active = gcn::Color(result[0], result[1], result[2], result[3]);
-		}
-		else
-		{
-			gui_theme.selector_active = gcn::Color(103, 136, 187);
-		}
-	}
-	else
-	{
-		gui_theme.selector_active = gcn::Color(103, 136, 187);
-	}
-
-	// Textbox Background
-	if (amiberry_options.gui_theme_textbox_background[0])
-	{
-		// parse string as comma-separated numbers
-		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_textbox_background);
-		if (result.size() == 3)
-		{
-			gui_theme.textbox_background = gcn::Color(result[0], result[1], result[2]);
-		}
-		else if (result.size() == 4)
-		{
-			gui_theme.textbox_background = gcn::Color(result[0], result[1], result[2], result[3]);
-		}
-		else
-		{
-			gui_theme.textbox_background = gcn::Color(220, 220, 220);
-		}
-	}
-	else
-	{
-		gui_theme.textbox_background = gcn::Color(220, 220, 220);
-	}
-
-	// Selection color (e.g. dropdowns)
-	if (amiberry_options.gui_theme_selection_color[0])
-	{
-		// parse string as comma-separated numbers
-		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_selection_color);
-		if (result.size() == 3)
-		{
-			gui_theme.selection_color = gcn::Color(result[0], result[1], result[2]);
-		}
-		else if (result.size() == 4)
-		{
-			gui_theme.selection_color = gcn::Color(result[0], result[1], result[2], result[3]);
-		}
-		else
-		{
-			gui_theme.selection_color = gcn::Color(195, 217, 217);
-		}
-	}
-	else
-	{
-		gui_theme.selection_color = gcn::Color(195, 217, 217);
-	}
-
-	// Foreground color
-	if (amiberry_options.gui_theme_foreground_color[0])
-	{
-		// parse string as comma-separated numbers
-		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_foreground_color);
-		if (result.size() == 3)
-		{
-			gui_theme.foreground_color = gcn::Color(result[0], result[1], result[2]);
-		}
-		else if (result.size() == 4)
-		{
-			gui_theme.foreground_color = gcn::Color(result[0], result[1], result[2], result[3]);
-		}
-		else
-		{
-			gui_theme.foreground_color = gcn::Color(0, 0, 0);
-		}
-	}
-	else
-	{
-		gui_theme.foreground_color = gcn::Color(0, 0, 0);
-	}
 }
 
-static const TCHAR* scsimode[] = { _T("SCSIEMU"), _T("SPTI"), _T("SPTI+SCSISCAN"), NULL };
+static const TCHAR* scsimode[] = { _T("SCSIEMU"), _T("SPTI"), _T("SPTI+SCSISCAN"), nullptr};
 //static const TCHAR* statusbarmode[] = { _T("none"), _T("normal"), _T("extended"), NULL };
 //static const TCHAR* configmult[] = { _T("1x"), _T("2x"), _T("3x"), _T("4x"), _T("5x"), _T("6x"), _T("7x"), _T("8x"), NULL };
 
@@ -2523,7 +2436,7 @@ static const TCHAR* scsimode[] = { _T("SCSIEMU"), _T("SPTI"), _T("SPTI+SCSISCAN"
 
 extern int scsiromselected;
 
-void target_save_options(struct zfile* f, struct uae_prefs* p)
+void target_save_options(zfile* f, uae_prefs* p)
 {
 	//struct midiportinfo *midp;
 
@@ -2600,10 +2513,16 @@ void target_save_options(struct zfile* f, struct uae_prefs* p)
 
 	cfgfile_target_dwrite(f, _T("gfx_horizontal_offset"), _T("%d"), p->gfx_horizontal_offset);
 	cfgfile_target_dwrite(f, _T("gfx_vertical_offset"), _T("%d"), p->gfx_vertical_offset);
-	cfgfile_target_dwrite_bool(f, _T("gfx_auto_crop"), p->gfx_auto_crop);
-	cfgfile_target_dwrite_bool(f, _T("gfx_manual_crop"), p->gfx_manual_crop);
-	cfgfile_target_dwrite(f, _T("gfx_manual_crop_width"), _T("%d"), p->gfx_manual_crop_width);
-	cfgfile_target_dwrite(f, _T("gfx_manual_crop_height"), _T("%d"), p->gfx_manual_crop_height);
+	if (p->gfx_auto_crop)
+	{
+		cfgfile_target_dwrite_bool(f, _T("gfx_auto_crop"), p->gfx_auto_crop);
+	}
+	else if (p->gfx_manual_crop)
+	{
+		cfgfile_target_dwrite_bool(f, _T("gfx_manual_crop"), p->gfx_manual_crop);
+		cfgfile_target_dwrite(f, _T("gfx_manual_crop_width"), _T("%d"), p->gfx_manual_crop_width);
+		cfgfile_target_dwrite(f, _T("gfx_manual_crop_height"), _T("%d"), p->gfx_manual_crop_height);
+	}
 	cfgfile_target_dwrite(f, _T("gfx_correct_aspect"), _T("%d"), p->gfx_correct_aspect);
 	cfgfile_target_dwrite(f, _T("kbd_led_num"), _T("%d"), p->kbd_led_num);
 	cfgfile_target_dwrite(f, _T("kbd_led_scr"), _T("%d"), p->kbd_led_scr);
@@ -2616,12 +2535,15 @@ void target_save_options(struct zfile* f, struct uae_prefs* p)
 	cfgfile_target_dwrite_str(f, _T("fullscreen_toggle"), p->fullscreen_toggle);
 	cfgfile_target_dwrite_str(f, _T("minimize"), p->minimize);
 
-	cfgfile_target_dwrite(f, _T("drawbridge_driver"), _T("%d"), p->drawbridge_driver);
-	cfgfile_target_dwrite_bool(f, _T("drawbridge_serial_autodetect"), p->drawbridge_serial_auto);
-	cfgfile_target_write_str(f, _T("drawbridge_serial_port"), p->drawbridge_serial_port);
-	cfgfile_target_dwrite_bool(f, _T("drawbridge_smartspeed"), p->drawbridge_smartspeed);
-	cfgfile_target_dwrite_bool(f, _T("drawbridge_autocache"), p->drawbridge_autocache);
-	cfgfile_target_dwrite_bool(f, _T("drawbridge_connected_drive_b"), p->drawbridge_connected_drive_b);
+	if (p->drawbridge_driver > 0)
+	{
+		cfgfile_target_dwrite(f, _T("drawbridge_driver"), _T("%d"), p->drawbridge_driver);
+		cfgfile_target_dwrite_bool(f, _T("drawbridge_serial_autodetect"), p->drawbridge_serial_auto);
+		cfgfile_target_write_str(f, _T("drawbridge_serial_port"), p->drawbridge_serial_port);
+		cfgfile_target_dwrite_bool(f, _T("drawbridge_smartspeed"), p->drawbridge_smartspeed);
+		cfgfile_target_dwrite_bool(f, _T("drawbridge_autocache"), p->drawbridge_autocache);
+		cfgfile_target_dwrite_bool(f, _T("drawbridge_connected_drive_b"), p->drawbridge_connected_drive_b);
+	}
 
 	cfgfile_target_dwrite_bool(f, _T("alt_tab_release"), p->alt_tab_release);
 	cfgfile_target_dwrite(f, _T("sound_pullmode"), _T("%d"), p->sound_pullmode);
@@ -2643,7 +2565,7 @@ void target_save_options(struct zfile* f, struct uae_prefs* p)
 	cfgfile_target_dwrite_str(f, _T("vkbd_toggle"), p->vkbd_toggle);
 }
 
-void target_restart(void)
+void target_restart()
 {
 	emulating = 0;
 	gui_restart();
@@ -2666,10 +2588,10 @@ static const TCHAR *obsolete[] = {
 	_T("file_path"), _T("iconified_nospeed"), _T("activepriority"), _T("magic_mouse"),
 	_T("filesystem_codepage"), _T("aspi"), _T("no_overlay"), _T("soundcard_exclusive"),
 	_T("specialkey"), _T("sound_speed_tweak"), _T("sound_lag"),
-	0
+	nullptr
 };
 
-static int target_parse_option_hardware(struct uae_prefs *p, const TCHAR *option, const TCHAR *value)
+static int target_parse_option_hardware(uae_prefs *p, const TCHAR *option, const TCHAR *value)
 {
 	TCHAR tmpbuf[CONFIG_BLEN];
 	if (cfgfile_string(option, value, _T("rtg_vblank"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
@@ -2692,10 +2614,9 @@ static int target_parse_option_hardware(struct uae_prefs *p, const TCHAR *option
 	return 0;
 }
 
-static int target_parse_option_host(struct uae_prefs *p, const TCHAR *option, const TCHAR *value)
+static int target_parse_option_host(uae_prefs *p, const TCHAR *option, const TCHAR *value)
 {
 	TCHAR tmpbuf[CONFIG_BLEN];
-	int v;
 	bool tbool;
 	
 	if (cfgfile_yesno(option, value, _T("middle_mouse"), &tbool)) {
@@ -2768,7 +2689,7 @@ static int target_parse_option_host(struct uae_prefs *p, const TCHAR *option, co
 
 	if (cfgfile_string(option, value, _T("expansion_gui_page"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
 		TCHAR* p = _tcschr(tmpbuf, ',');
-		if (p != NULL)
+		if (p != nullptr)
 			*p = 0;
 		for (int i = 0; expansionroms[i].name; i++) {
 			if (!_tcsicmp(tmpbuf, expansionroms[i].name)) {
@@ -2787,15 +2708,13 @@ static int target_parse_option_host(struct uae_prefs *p, const TCHAR *option, co
 	if (cfgfile_yesno(option, value, _T("soundcard_default"), &p->soundcard_default))
 		return 1;
 	if (cfgfile_intval(option, value, _T("soundcard"), &p->soundcard, 1)) {
-		if (p->soundcard < 0 || p->soundcard >= MAX_SOUND_DEVICES || sound_devices[p->soundcard] == NULL)
+		if (p->soundcard < 0 || p->soundcard >= MAX_SOUND_DEVICES || sound_devices[p->soundcard] == nullptr)
 			p->soundcard = 0;
 		return 1;
 	}
 
 	if (cfgfile_string(option, value, _T("soundcardname"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
-		int num;
-
-		num = p->soundcard;
+		const int num = p->soundcard;
 		p->soundcard = -1;
 		for (int i = 0; i < MAX_SOUND_DEVICES && sound_devices[i]; i++) {
 			if (i < num)
@@ -2817,8 +2736,8 @@ static int target_parse_option_host(struct uae_prefs *p, const TCHAR *option, co
 			for (int i = 0; i < MAX_SOUND_DEVICES && sound_devices[i]; i++) {
 				if (!sound_devices[i]->prefix)
 					continue;
-				int prefixlen = _tcslen(sound_devices[i]->prefix);
-				int tmplen = _tcslen(tmpbuf);
+				const int prefixlen = _tcslen(sound_devices[i]->prefix);
+				const int tmplen = _tcslen(tmpbuf);
 				if (prefixlen > 0 && tmplen >= prefixlen &&
 					!_tcsncmp(sound_devices[i]->prefix, tmpbuf, prefixlen) &&
 					((tmplen > prefixlen && tmpbuf[prefixlen] == ':')
@@ -2834,9 +2753,7 @@ static int target_parse_option_host(struct uae_prefs *p, const TCHAR *option, co
 		return 1;
 	}
 	if (cfgfile_string(option, value, _T("samplersoundcardname"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
-		int num;
-
-		num = p->samplersoundcard;
+		const int num = p->samplersoundcard;
 		p->samplersoundcard = -1;
 		for (int i = 0; i < MAX_SOUND_DEVICES && record_devices[i]; i++) {
 			if (i < num)
@@ -2858,14 +2775,11 @@ static int target_parse_option_host(struct uae_prefs *p, const TCHAR *option, co
 	}
 
 	if (cfgfile_string(option, value, _T("rtg_scale_aspect_ratio"), tmpbuf, sizeof tmpbuf / sizeof (TCHAR))) {
-		int v1, v2;
-		TCHAR* s;
-
 		p->rtgscaleaspectratio = -1;
-		v1 = _tstol(tmpbuf);
-		s = _tcschr(tmpbuf, ':');
+		const int v1 = _tstol(tmpbuf);
+		TCHAR* s = _tcschr(tmpbuf, ':');
 		if (s) {
-			v2 = _tstol(s + 1);
+			const int v2 = _tstol(s + 1);
 			if (v1 < 0 || v2 < 0)
 				p->rtgscaleaspectratio = -1;
 			else if (v1 == 0 || v2 == 0)
@@ -2930,7 +2844,7 @@ static int target_parse_option_host(struct uae_prefs *p, const TCHAR *option, co
 	return 0;
 }
 
-int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *value, int type)
+int target_parse_option(uae_prefs *p, const TCHAR *option, const TCHAR *value, const int type)
 {
 	int v = 0;
 	if (type & CONFIG_TYPE_HARDWARE) {
@@ -2958,7 +2872,7 @@ std::string get_data_path()
 	return fix_trailing(data_dir);
 }
 
-void get_saveimage_path(char* out, int size, int dir)
+void get_saveimage_path(char* out, const int size, int dir)
 {
 	_tcsncpy(out, fix_trailing(saveimage_dir).c_str(), size - 1);
 }
@@ -2968,7 +2882,7 @@ std::string get_configuration_path()
 	return fix_trailing(config_path);
 }
 
-void get_configuration_path(char* out, int size)
+void get_configuration_path(char* out, const int size)
 {
 	_tcsncpy(out, fix_trailing(config_path).c_str(), size - 1);
 }
@@ -2991,6 +2905,11 @@ void set_plugins_path(const std::string& newpath)
 void set_video_path(const std::string& newpath)
 {
 	video_dir = newpath;
+}
+
+void set_themes_path(const std::string& newpath)
+{
+	themes_path = newpath;
 }
 
 void set_screenshot_path(const std::string& newpath)
@@ -3028,7 +2947,7 @@ bool get_logfile_enabled()
 	return amiberry_options.write_logfile;
 }
 
-void set_logfile_enabled(bool enabled)
+void set_logfile_enabled(const bool enabled)
 {
 	amiberry_options.write_logfile = enabled;
 }
@@ -3116,7 +3035,7 @@ std::string get_rom_path()
 	return fix_trailing(rom_path);
 }
 
-void get_rom_path(char* out, int size)
+void get_rom_path(char* out, const int size)
 {
 	_tcsncpy(out, fix_trailing(rom_path).c_str(), size - 1);
 }
@@ -3126,27 +3045,31 @@ void set_rom_path(const std::string& newpath)
 	rom_path = newpath;
 }
 
-void get_rp9_path(char* out, int size)
+void get_rp9_path(char* out, const int size)
 {
 	_tcsncpy(out, fix_trailing(rp9_path).c_str(), size - 1);
 }
 
-void get_savestate_path(char* out, int size)
+void get_savestate_path(char* out, const int size)
 {
+	if (path_statefile[0]) {
+		_tcsncpy(out, path_statefile, size);
+		return;
+	}
 	_tcsncpy(out, fix_trailing(savestate_dir).c_str(), size - 1);
 }
 
-void fetch_ripperpath(TCHAR* out, int size)
+void fetch_ripperpath(TCHAR* out, const int size)
 {
 	_tcsncpy(out, fix_trailing(ripper_path).c_str(), size - 1);
 }
 
-void fetch_inputfilepath(TCHAR* out, int size)
+void fetch_inputfilepath(TCHAR* out, const int size)
 {
 	_tcsncpy(out, fix_trailing(input_dir).c_str(), size - 1);
 }
 
-void get_nvram_path(TCHAR* out, int size)
+void get_nvram_path(TCHAR* out, const int size)
 {
 	_tcsncpy(out, fix_trailing(nvram_dir).c_str(), size - 1);
 }
@@ -3161,23 +3084,36 @@ std::string get_screenshot_path()
 	return fix_trailing(screenshot_dir);
 }
 
-void get_video_path(char* out, int size)
+std::string get_ini_file_path()
+{
+	return amiberry_ini_file;
+}
+
+void get_video_path(char* out, const int size)
 {
 	_tcsncpy(out, fix_trailing(video_dir).c_str(), size - 1);
 }
 
-void get_floppy_sounds_path(char* out, int size)
+std::string get_themes_path()
+{
+	return fix_trailing(themes_path);
+}
+
+void get_floppy_sounds_path(char* out, const int size)
 {
 	_tcsncpy(out, fix_trailing(floppy_sounds_dir).c_str(), size - 1);
 }
 
-int target_cfgfile_load(struct uae_prefs* p, const char* filename, int type, int isdefault)
+int target_cfgfile_load(uae_prefs* p, const char* filename, int type, const int isdefault)
 {
 	int type2;
 	auto result = 0;
 
-	if (type < 0)
-		type = 0;
+	if (isdefault) {
+		path_statefile[0] = 0;
+	}
+
+	type = std::max(type, 0);
 
 	if (type == 0 || type == 1) {
 		discard_prefs(p, 0);
@@ -3212,12 +3148,12 @@ int target_cfgfile_load(struct uae_prefs* p, const char* filename, int type, int
 		if (strlen(p->floppyslots[i].df) > 0)
 			add_file_to_mru_list(lstMRUDiskList, std::string(p->floppyslots[i].df));
 	}
-
-	SetLastActiveConfig(filename);
+	set_last_loaded_config(filename);
+	set_last_active_config(filename);
 	return result;
 }
 
-int check_configfile(char* file)
+int check_configfile(const char* file)
 {
 	char tmp[MAX_DPATH];
 
@@ -3259,7 +3195,7 @@ std::string extract_filename(const std::string& path)
 	return file_path.filename().string();
 }
 
-void extract_path(char* str, char* buffer)
+void extract_path(const char* str, char* buffer)
 {
 	strncpy(buffer, str, MAX_DPATH - 1);
 	auto* p = buffer + strlen(buffer) - 1;
@@ -3338,7 +3274,7 @@ void read_directory(const std::string& path, std::vector<std::string>* dirs, std
 		sort(files->begin(), files->end());
 }
 
-void save_amiberry_settings(void)
+void save_amiberry_settings()
 {
 	auto* const f = fopen(amiberry_conf_file.c_str(), "we");
 	if (!f)
@@ -3346,28 +3282,25 @@ void save_amiberry_settings(void)
 
 	char buffer[MAX_DPATH];
 
-	auto write_bool_option = [&](const char* name, bool value) {
-		snprintf(buffer, MAX_DPATH, "%s=%s\n", name, value ? "yes" : "no");
+	auto write_bool_option = [&](const char* name, const bool value) {
+		_sntprintf(buffer, MAX_DPATH, "%s=%s\n", name, value ? "yes" : "no");
 		fputs(buffer, f);
 		};
 
-	auto write_int_option = [&](const char* name, int value) {
-		snprintf(buffer, MAX_DPATH, "%s=%d\n", name, value);
+	auto write_int_option = [&](const char* name, const int value) {
+		_sntprintf(buffer, MAX_DPATH, "%s=%d\n", name, value);
 		fputs(buffer, f);
 		};
 
 	auto write_string_option = [&](const char* name, const std::string& value) {
-		snprintf(buffer, MAX_DPATH, "%s=%s\n", name, value.c_str());
+		_sntprintf(buffer, MAX_DPATH, "%s=%s\n", name, value.c_str());
 		fputs(buffer, f);
 		};
 
-	auto write_float_option = [&](const char* name, float value) {
-		snprintf(buffer, MAX_DPATH, "%s=%f\n", name, value);
+	auto write_float_option = [&](const char* name, const float value) {
+		_sntprintf(buffer, MAX_DPATH, "%s=%f\n", name, value);
 		fputs(buffer, f);
 		};
-
-	// Set the window scaling option (the default is 1.0)
-	write_float_option("window_scaling", amiberry_options.window_scaling);
 
 	// Should the Quickstart Panel be the default when opening the GUI?
 	write_int_option("Quickstart", amiberry_options.quickstart_start);
@@ -3539,36 +3472,10 @@ void save_amiberry_settings(void)
 	// Default controller button for toggling the Virtual Keyboard
 	write_string_option("default_vkbd_toggle", amiberry_options.default_vkbd_toggle);
 
-	// GUI Theme: Font name
-	write_string_option("gui_theme_font_name", amiberry_options.gui_theme_font_name);
-
-	// GUI Theme: Font size
-	write_int_option("gui_theme_font_size", amiberry_options.gui_theme_font_size);
-
-	// GUI Theme: Font color
-	write_string_option("gui_theme_font_color", amiberry_options.gui_theme_font_color);
-
-	// GUI Theme: Base color
-	write_string_option("gui_theme_base_color", amiberry_options.gui_theme_base_color);
-
-	// GUI Theme: Selector Inactive color
-	write_string_option("gui_theme_selector_inactive", amiberry_options.gui_theme_selector_inactive);
-
-	// GUI Theme: Selector Active color
-	write_string_option("gui_theme_selector_active", amiberry_options.gui_theme_selector_active);
-
-	// GUI Theme: Selection color
-	write_string_option("gui_theme_selection_color", amiberry_options.gui_theme_selection_color);
-
-	// GUI Theme: Foreground color
-	write_string_option("gui_theme_foreground_color", amiberry_options.gui_theme_foreground_color);
-
-	// GUI Theme: Textbox Background color
-	write_string_option("gui_theme_textbox_background", amiberry_options.gui_theme_textbox_background);
+	// GUI Theme
+	write_string_option("gui_theme", amiberry_options.gui_theme);
 
 	// Paths
-	write_string_option("path", current_dir);
-	write_string_option("config_path", config_path);
 	write_string_option("controllers_path", controllers_path);
 	write_string_option("retroarch_config", retroarch_file);
 	write_string_option("whdboot_path", whdboot_path);
@@ -3580,7 +3487,6 @@ void save_amiberry_settings(void)
 	write_string_option("rom_path", rom_path);
 	write_string_option("rp9_path", rp9_path);
 	write_string_option("floppy_sounds_dir", floppy_sounds_dir);
-	write_string_option("data_dir", data_dir);
 	write_string_option("saveimage_dir", saveimage_dir);
 	write_string_option("savestate_dir", savestate_dir);
 	write_string_option("screenshot_dir", screenshot_dir);
@@ -3589,21 +3495,10 @@ void save_amiberry_settings(void)
 	write_string_option("nvram_dir", nvram_dir);
 	write_string_option("plugins_dir", plugins_dir);
 	write_string_option("video_dir", video_dir);
-
-	// The number of ROMs in the last scan
-	snprintf(buffer, MAX_DPATH, "ROMs=%zu\n", lstAvailableROMs.size());
-	fputs(buffer, f);
-
-	// The ROMs found in the last scan
-	for (auto& lstAvailableROM : lstAvailableROMs)
-	{
-		write_string_option("ROMName", lstAvailableROM->Name);
-		write_string_option("ROMPath", lstAvailableROM->Path);
-		write_int_option("ROMType", lstAvailableROM->ROMType);
-	}
+	write_string_option("themes_path", themes_path);
 
 	// Recent disk entries (these are used in the dropdown controls)
-	snprintf(buffer, MAX_DPATH, "MRUDiskList=%zu\n", lstMRUDiskList.size());
+	_sntprintf(buffer, MAX_DPATH, "MRUDiskList=%zu\n", lstMRUDiskList.size());
 	fputs(buffer, f);
 	for (auto& i : lstMRUDiskList)
 	{
@@ -3611,7 +3506,7 @@ void save_amiberry_settings(void)
 	}
 
 	// Recent CD entries (these are used in the dropdown controls)
-	snprintf(buffer, MAX_DPATH, "MRUCDList=%zu\n", lstMRUCDList.size());
+	_sntprintf(buffer, MAX_DPATH, "MRUCDList=%zu\n", lstMRUCDList.size());
 	fputs(buffer, f);
 	for (auto& i : lstMRUCDList)
 	{
@@ -3620,7 +3515,7 @@ void save_amiberry_settings(void)
 
 	// Recent WHDLoad entries (these are used in the dropdown controls)
 	// lstMRUWhdloadList
-	snprintf(buffer, MAX_DPATH, "MRUWHDLoadList=%zu\n", lstMRUWhdloadList.size());
+	_sntprintf(buffer, MAX_DPATH, "MRUWHDLoadList=%zu\n", lstMRUWhdloadList.size());
 	fputs(buffer, f);
 	for (auto& i : lstMRUWhdloadList)
 	{
@@ -3630,11 +3525,11 @@ void save_amiberry_settings(void)
 	fclose(f);
 }
 
-void get_string(FILE* f, char* dst, int size)
+void get_string(FILE* f, char* dst, const int size)
 {
 	char buffer[MAX_DPATH];
 	fgets(buffer, MAX_DPATH, f);
-	int i = strlen(buffer);
+	auto i = strlen(buffer);
 	while (i > 0 && (buffer[i - 1] == '\t' || buffer[i - 1] == ' '
 		|| buffer[i - 1] == '\r' || buffer[i - 1] == '\n'))
 		buffer[--i] = '\0';
@@ -3644,7 +3539,7 @@ void get_string(FILE* f, char* dst, int size)
 static void trim_wsa(char* s)
 {
 	/* Delete trailing whitespace.  */
-	int len = strlen(s);
+	auto len = strlen(s);
 	while (len > 0 && strcspn(s + len - 1, "\t \r\n") == 0)
 		s[--len] = '\0';
 }
@@ -3662,24 +3557,7 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 	if (!cfgfile_separate_linea(path, linea, option, value))
 		return 0;
 
-	if (cfgfile_string(option, value, "ROMName", romName, sizeof romName)
-		|| cfgfile_string(option, value, "ROMPath", romPath, sizeof romPath)
-		|| cfgfile_intval(option, value, "ROMType", &romType, 1))
-	{
-		if (strlen(romName) > 0 && strlen(romPath) > 0 && romType != -1)
-		{
-			auto* tmp = new AvailableROM();
-			tmp->Name.assign(romName);
-			tmp->Path.assign(romPath);
-			tmp->ROMType = romType;
-			lstAvailableROMs.emplace_back(tmp);
-			strncpy(romName, "", sizeof romName);
-			strncpy(romPath, "", sizeof romPath);
-			romType = -1;
-			ret = 1;
-		}
-	}
-	else if (cfgfile_string(option, value, "Diskfile", tmpFile, sizeof tmpFile))
+	if (cfgfile_string(option, value, "Diskfile", tmpFile, sizeof tmpFile))
 	{
 		auto* const f = fopen(tmpFile, "rbe");
 		if (f != nullptr)
@@ -3711,8 +3589,6 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 	}
 	else
 	{
-		ret |= cfgfile_string(option, value, "path", current_dir);
-		ret |= cfgfile_string(option, value, "config_path", config_path);
 		ret |= cfgfile_string(option, value, "controllers_path", controllers_path);
 		ret |= cfgfile_string(option, value, "retroarch_config", retroarch_file);
 		ret |= cfgfile_string(option, value, "whdboot_path", whdboot_path);
@@ -3724,7 +3600,6 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		ret |= cfgfile_string(option, value, "rom_path", rom_path);
 		ret |= cfgfile_string(option, value, "rp9_path", rp9_path);
 		ret |= cfgfile_string(option, value, "floppy_sounds_dir", floppy_sounds_dir);
-		ret |= cfgfile_string(option, value, "data_dir", data_dir);
 		ret |= cfgfile_string(option, value, "saveimage_dir", saveimage_dir);
 		ret |= cfgfile_string(option, value, "savestate_dir", savestate_dir);
 		ret |= cfgfile_string(option, value, "ripper_path", ripper_path);
@@ -3733,6 +3608,7 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		ret |= cfgfile_string(option, value, "nvram_dir", nvram_dir);
 		ret |= cfgfile_string(option, value, "plugins_dir", plugins_dir);
 		ret |= cfgfile_string(option, value, "video_dir", video_dir);
+		ret |= cfgfile_string(option, value, "themes_path", themes_path);
 		// NOTE: amiberry_config is a "read only", i.e. it's not written in
 		// save_amiberry_settings(). It's purpose is to provide -o amiberry_config=path
 		// command line option.
@@ -3740,7 +3616,6 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		ret |= cfgfile_intval(option, value, "ROMs", &numROMs, 1);
 		ret |= cfgfile_intval(option, value, "MRUDiskList", &numDisks, 1);
 		ret |= cfgfile_intval(option, value, "MRUCDList", &numCDs, 1);
-		ret |= cfgfile_floatval(option, value, "window_scaling", &amiberry_options.window_scaling);
 		ret |= cfgfile_yesno(option, value, "Quickstart", &amiberry_options.quickstart_start);
 		ret |= cfgfile_yesno(option, value, "read_config_descriptions", &amiberry_options.read_config_descriptions);
 		ret |= cfgfile_yesno(option, value, "write_logfile", &amiberry_options.write_logfile);
@@ -3796,20 +3671,12 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		ret |= cfgfile_string(option, value, "default_vkbd_style", amiberry_options.default_vkbd_style, sizeof amiberry_options.default_vkbd_style);
 		ret |= cfgfile_intval(option, value, "default_vkbd_transparency", &amiberry_options.default_vkbd_transparency, 1);
 		ret |= cfgfile_string(option, value, "default_vkbd_toggle", amiberry_options.default_vkbd_toggle, sizeof amiberry_options.default_vkbd_toggle);
-		ret |= cfgfile_string(option, value, "gui_theme_font_name", amiberry_options.gui_theme_font_name, sizeof amiberry_options.gui_theme_font_name);
-		ret |= cfgfile_intval(option, value, "gui_theme_font_size", &amiberry_options.gui_theme_font_size, 1);
-		ret |= cfgfile_string(option, value, "gui_theme_font_color", amiberry_options.gui_theme_font_color, sizeof amiberry_options.gui_theme_font_color);
-		ret |= cfgfile_string(option, value, "gui_theme_base_color", amiberry_options.gui_theme_base_color, sizeof amiberry_options.gui_theme_base_color);
-		ret |= cfgfile_string(option, value, "gui_theme_selector_inactive", amiberry_options.gui_theme_selector_inactive, sizeof amiberry_options.gui_theme_selector_inactive);
-		ret |= cfgfile_string(option, value, "gui_theme_selector_active", amiberry_options.gui_theme_selector_active, sizeof amiberry_options.gui_theme_selector_active);
-		ret |= cfgfile_string(option, value, "gui_theme_selection_color", amiberry_options.gui_theme_selection_color, sizeof amiberry_options.gui_theme_selection_color);
-		ret |= cfgfile_string(option, value, "gui_theme_foreground_color", amiberry_options.gui_theme_foreground_color, sizeof amiberry_options.gui_theme_foreground_color);
-		ret |= cfgfile_string(option, value, "gui_theme_textbox_background", amiberry_options.gui_theme_textbox_background, sizeof amiberry_options.gui_theme_textbox_background);
+		ret |= cfgfile_string(option, value, "gui_theme", amiberry_options.gui_theme, sizeof amiberry_options.gui_theme);
 	}
 	return ret;
 }
 
-static int parse_amiberry_cmd_line(int *argc, char* argv[], int remove_used_args)
+static int parse_amiberry_cmd_line(int *argc, char* argv[], const int remove_used_args)
 {
 	char arg_copy[CONFIG_BLEN];
 
@@ -3840,7 +3707,7 @@ static int parse_amiberry_cmd_line(int *argc, char* argv[], int remove_used_args
 			}
 			// argc is now 2 items shorter ...
 			*argc -= 2;
-			// .. and we must read this index again because of the shifting we did
+			// ... and we must read this index again because of the shifting we did
 			i--;
 		}
 	}
@@ -3852,8 +3719,8 @@ static int get_env_dir( char * path, const char *path_template, const char *envn
 {
 	int ret = 0;
 	char *ep = getenv(envname);
-	if( ep != NULL ) {
-		snprintf(path, MAX_DPATH, path_template, ep );
+	if( ep != nullptr) {
+		_sntprintf(path, MAX_DPATH, path_template, ep );
 		DIR* tdir = opendir(path);
 		if (tdir) {
 			closedir(tdir);
@@ -3863,95 +3730,54 @@ static int get_env_dir( char * path, const char *path_template, const char *envn
 	return ret;
 }
 
-void init_macos_amiberry_folders(const std::string& macos_amiberry_directory)
+// Get the value of one of the XDG_*_HOME variables, as per the spec:
+// https://specifications.freedesktop.org/basedir-spec/latest/
+static std::string get_xdg_home(const char *var, const std::string& suffix)
 {
-	if (!my_existsdir(macos_amiberry_directory.c_str()))
-		my_mkdir(macos_amiberry_directory.c_str());
+	// If the variable is set explicitly, return its value
+	const auto env_value = getenv(var);
+	if (env_value != nullptr)
+	{
+		return { env_value };
+	}
 
-	std::string directory = macos_amiberry_directory + "/Hard Drives";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
+	// If HOME is set, construct the default value relative to it
+	const auto home = getenv("HOME");
+	if (home != nullptr)
+	{
+		return std::string(home) + suffix;
+	}
 
-	directory = macos_amiberry_directory + "/Configurations";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Controllers";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Logfiles";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Kickstarts";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Whdboot";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Whdboot/game-data";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Whdboot/save-data";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Whdboot/save-data/Autoboots";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Whdboot/save-data/Debugs";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Whdboot/save-data/Kickstarts";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Whdboot/save-data/Savegames";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Savestates";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Screenshots";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Inputrecordings";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Nvram";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
+	// Return "" so directory_exists will fail
+	return { "" };
 }
 
-void init_macos_library_folders(const std::string& macos_amiberry_directory)
+static std::string get_xdg_data_home()
 {
-	if (!my_existsdir(macos_amiberry_directory.c_str()))
-		my_mkdir(macos_amiberry_directory.c_str());
-
-	std::string directory = macos_amiberry_directory + "/floppy_sounds";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
+	return get_xdg_home("XDG_DATA_HOME", "/.local/share");
 }
 
+static std::string get_xdg_config_home()
+{
+	return get_xdg_home("XDG_CONFIG_HOME", "/.config");
+}
+
+bool directory_exists(std::string directory, const std::string& sub_dir)
+{
+	if (directory.empty() || sub_dir.empty()) return false;
+	directory += sub_dir;
+	return my_existsdir(directory.c_str());
+}
+
+// this is where the required assets are stored, like fonts, icons, etc.
+std::string get_data_directory(bool portable_mode)
+{
 #ifdef __MACH__
-#include <mach-o/dyld.h>
-void macos_copy_amiberry_files_to_userdir(std::string macos_amiberry_directory)
-{
 	char exepath[MAX_DPATH];
 	uint32_t size = sizeof exepath;
+	std::string directory;
 	if (_NSGetExecutablePath(exepath, &size) == 0)
 	{
-		std::string directory;
 		size_t last_slash_idx = string(exepath).rfind('/');
 		if (std::string::npos != last_slash_idx)
 		{
@@ -3962,90 +3788,446 @@ void macos_copy_amiberry_files_to_userdir(std::string macos_amiberry_directory)
 		{
 			directory = directory.substr(0, last_slash_idx);
 		}
-		char command[MAX_DPATH];
-		sprintf(command, "%s/%s", directory.c_str(), "Resources/macos_init_amiberry.zsh");
-		system(command);
+	}
+	return directory + "/Resources/data/";
+#else
+	if (portable_mode)
+	{
+		char tmp[MAX_DPATH];
+		getcwd(tmp, MAX_DPATH);
+		write_log("Portable mode: Setting data directory to startup path: %s\n", tmp);
+		return  std::string(tmp) + "/data/";
+	}
+
+	const auto env_data_dir = getenv("AMIBERRY_DATA_DIR");
+	const auto xdg_data_home = get_xdg_data_home();
+
+	// 1: Check if the $AMIBERRY_DATA_DIR ENV variable is set
+	if (env_data_dir != nullptr && my_existsdir(env_data_dir))
+	{
+		// If the ENV variable is set, and it actually contains our data dir, use it
+		write_log("Using data directory from AMIBERRY_DATA_DIR: %s\n", env_data_dir);
+		return {env_data_dir};
+	}
+	// 2: Check for system-wide installation (e.g. from a .deb package)
+	if (directory_exists(AMIBERRY_DATADIR, "/data"))
+	{
+		// If the data directory exists in AMIBERRY_DATADIR, use it
+        // This would be the default location after an installation with the .deb package
+		write_log("Using data directory from " AMIBERRY_DATADIR "\n");
+		return std::string(AMIBERRY_DATADIR) + "/data/";
+	}
+
+	// 3: Fallback Portable mode, all in the startup path
+	char tmp[MAX_DPATH];
+	getcwd(tmp, MAX_DPATH);
+	write_log("Using data directory from startup path: %s\n", tmp);
+	return  std::string(tmp) + "/data/";
+#endif
+}
+
+// This path wil be used to create most of the user-specific files and directories
+// Kickstart ROMs, HDD images, Floppy images will live under this directory
+std::string get_home_directory(const bool portable_mode)
+{
+	if (portable_mode)
+	{
+		// Portable mode, all in startup path
+		write_log("Portable mode: Setting home directory to startup path\n");
+		char tmp[MAX_DPATH];
+		getcwd(tmp, MAX_DPATH);
+		return {tmp};
+	}
+	const auto env_home_dir = getenv("AMIBERRY_HOME_DIR");
+	const auto user_home_dir = getenv("HOME");
+
+	// 1: Check if the $AMIBERRY_HOME_DIR ENV variable is set
+	if (env_home_dir != nullptr && my_existsdir(env_home_dir))
+	{
+		// If the ENV variable is set, use it
+		write_log("Using home directory from AMIBERRY_HOME_DIR: %s\n", env_home_dir);
+		return { env_home_dir };
+	}
+	// 2: Check $HOME/Amiberry-Lite
+	if (user_home_dir != nullptr)
+	{
+        if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
+        {
+            // If $HOME exists, but not the Amiberry-Lite subdirectory, create it
+            my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
+        }
+		// $HOME/Amiberry-Lite exists, use it
+		write_log("Using home directory from $HOME/Amiberry-Lite\n");
+        auto result = std::string(user_home_dir);
+		return result.append("/Amiberry-Lite");
+	}
+
+	// 3: Fallback Portable mode, all in startup path
+	write_log("Fallback Portable mode: Setting home directory to startup path\n");
+	char tmp[MAX_DPATH];
+	getcwd(tmp, MAX_DPATH);
+	return {tmp};
+}
+
+// The location of .uae configurations
+std::string get_config_directory(bool portable_mode)
+{
+#ifdef __MACH__
+    const auto user_home_dir = getenv("HOME");
+    if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
+    {
+        my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
+    }
+    if (!directory_exists(user_home_dir, "/Amiberry-Lite/Configurations"))
+    {
+        my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite/Configurations").c_str());
+    }
+    auto result = std::string(user_home_dir);
+    return result.append("/Amiberry-Lite/Configurations");
+#else
+	if (portable_mode)
+	{
+		write_log("Portable mode: Setting config directory to startup path\n");
+		char tmp[MAX_DPATH];
+		getcwd(tmp, MAX_DPATH);
+		return { std::string(tmp) + "/conf" };
+	}
+
+	const auto env_conf_dir = getenv("AMIBERRY_CONFIG_DIR");
+	const auto user_home_dir = getenv("HOME");
+
+	// 1: Check if the $AMIBERRY_CONFIG_DIR ENV variable is set
+	if (env_conf_dir != nullptr && my_existsdir(env_conf_dir))
+	{
+		// If the ENV variable is set, use it
+		write_log("Using config directory from AMIBERRY_CONFIG_DIR: %s\n", env_conf_dir);
+		return { env_conf_dir };
+	}
+	// 2: Check $HOME/Amiberry-Lite/conf
+	if (user_home_dir != nullptr)
+	{
+        if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
+        {
+            my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
+        }
+		// $HOME/Amiberry-Lite exists, use it
+		if (!directory_exists(user_home_dir, "/Amiberry-Lite/conf"))
+		{
+			my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite/conf").c_str());
+		}
+        // This should be the most used scenario
+		write_log("Using config directory from $HOME/Amiberry-Lite/conf\n");
+		auto result = std::string(user_home_dir);
+		return result.append("/Amiberry-Lite/conf");
+	}
+
+	// 3: Fallback Portable mode, all in startup path
+    // Should never really end up here, unless $HOME is not defined
+	write_log("Using config directory from startup path\n");
+	char tmp[MAX_DPATH];
+	getcwd(tmp, MAX_DPATH);
+	return { std::string(tmp) + "/conf" };
+#endif
+}
+
+// Plugins that Amiberry-Lite can use, usually in the form of shared libraries
+std::string get_plugins_directory(bool portable_mode)
+{
+#ifdef __MACH__
+	char exepath[MAX_DPATH];
+	uint32_t size = sizeof exepath;
+	std::string directory;
+	if (_NSGetExecutablePath(exepath, &size) == 0)
+	{
+		size_t last_slash_idx = string(exepath).rfind('/');
+		if (std::string::npos != last_slash_idx)
+		{
+			directory = string(exepath).substr(0, last_slash_idx);
+		}
+		last_slash_idx = directory.rfind('/');
+		if (std::string::npos != last_slash_idx)
+		{
+			directory = directory.substr(0, last_slash_idx);
+		}
+	}
+	return directory + "/Resources/plugins/";
+#else
+	if (portable_mode)
+	{
+		write_log("Portable mode: Setting plugins directory to startup path\n");
+		char tmp[MAX_DPATH];
+		getcwd(tmp, MAX_DPATH);
+		return { std::string(tmp) + "/plugins" };
+	}
+
+	// 1: Check if the $AMIBERRY_PLUGINS_DIR ENV variable is set
+	const auto env_plugins_dir = getenv("AMIBERRY_PLUGINS_DIR");
+	if (env_plugins_dir != nullptr && my_existsdir(env_plugins_dir))
+	{
+		// If the ENV variable is set, use it
+		write_log("Using config directory from AMIBERRY_PLUGINS_DIR: %s\n", env_plugins_dir);
+		return { env_plugins_dir };
+	}
+    // 2: Check system-wide location (e.g. installed from a .deb package)
+    if (my_existsdir(AMIBERRY_LIBDIR))
+    {
+        write_log("Using plugins directory from " AMIBERRY_LIBDIR "\n");
+        return AMIBERRY_LIBDIR;
+    }
+	// 3: Check for ~/Amiberry-Lite/plugins
+    const auto user_home_dir = getenv("HOME");
+    if (user_home_dir != nullptr)
+    {
+        if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
+        {
+            my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
+        }
+        // $HOME/Amiberry-Lite exists, use it
+        if (!directory_exists(user_home_dir, "/Amiberry-Lite/plugins"))
+        {
+            my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite/plugins").c_str());
+        }
+        write_log("Using plugins directory from $HOME/Amiberry-Lite/plugins\n");
+        return { std::string(user_home_dir) + "/Amiberry-Lite/plugins" };
+    }
+
+    // 4: Fallback Portable mode, all in the startup path
+    write_log("Using plugins directory from startup path\n");
+    char tmp[MAX_DPATH];
+    getcwd(tmp, MAX_DPATH);
+    return { std::string(tmp) + "/plugins" };
+#endif
+}
+
+extern void save_theme(const std::string& theme_filename);
+extern void load_theme(const std::string& theme_filename);
+extern void load_default_theme();
+
+void create_missing_amiberry_folders()
+{
+#ifdef __MACH__
+    char exepath[MAX_DPATH];
+	uint32_t size = sizeof exepath;
+    std::string app_directory;
+	if (_NSGetExecutablePath(exepath, &size) == 0)
+	{
+		size_t last_slash_idx = string(exepath).rfind('/');
+		if (std::string::npos != last_slash_idx)
+		{
+			app_directory = string(exepath).substr(0, last_slash_idx);
+		}
+		last_slash_idx = app_directory.rfind('/');
+		if (std::string::npos != last_slash_idx)
+		{
+			app_directory = app_directory.substr(0, last_slash_idx);
+		}
+    }
+#endif
+	if (!my_existsdir(config_path.c_str()))
+		my_mkdir(config_path.c_str());
+	if (!my_existsdir(controllers_path.c_str()))
+	{
+		my_mkdir(controllers_path.c_str());
+#ifdef __MACH__
+		const std::string default_controller_path = app_directory + "/Resources/controllers/";
+#else
+		const std::string default_controller_path = AMIBERRY_DATADIR "/controllers/";
+#endif
+		// copy default controller files, if they exist in AMIBERRY_DATADIR/controllers
+		if (my_existsdir(default_controller_path.c_str()))
+		{
+			const std::string command = "cp -r " + default_controller_path + "* " + controllers_path;
+			system(command.c_str());
+		}
+		else if (my_existsdir("/usr/share/amiberry-lite/controllers/"))
+		{
+			const std::string command = "cp -r /usr/share/amiberry-lite/controllers/* " + controllers_path;
+			system(command.c_str());
+		}
+	}
+	if (!my_existsdir(whdboot_path.c_str()))
+	{
+		my_mkdir(whdboot_path.c_str());
+#ifdef __MACH__
+		const std::string default_whdboot_path = app_directory + "/Resources/whdboot/";
+#else
+		const std::string default_whdboot_path = AMIBERRY_DATADIR "/whdboot/";
+#endif
+		// copy default whdboot files, if they exist in AMIBERRY_DATADIR/whdboot
+		if (my_existsdir(default_whdboot_path.c_str()))
+		{
+			const std::string command = "cp -r " + default_whdboot_path + "* " + whdboot_path;
+			system(command.c_str());
+		}
+		else if (my_existsdir("/usr/share/amiberry-lite/whdboot/"))
+		{
+			const std::string command = "cp -r /usr/share/amiberry-lite/whdboot/* " + whdboot_path;
+			system(command.c_str());
+		}
+	}
+    if (!my_existsdir(whdload_arch_path.c_str()))
+        my_mkdir(whdload_arch_path.c_str());
+    if (!my_existsdir(floppy_path.c_str()))
+        my_mkdir(floppy_path.c_str());
+    if (!my_existsdir(harddrive_path.c_str()))
+        my_mkdir(harddrive_path.c_str());
+    if (!my_existsdir(cdrom_path.c_str()))
+        my_mkdir(cdrom_path.c_str());
+	if (!my_existsdir(rom_path.c_str()))
+	{
+		my_mkdir(rom_path.c_str());
+#ifdef __MACH__
+		const std::string default_roms_path = app_directory + "/Resources/roms/";
+#else
+		const std::string default_roms_path = AMIBERRY_DATADIR "/roms/";
+#endif
+		// copy default kickstart files, if they exist in AMIBERRY_DATADIR/roms
+		if (my_existsdir(default_roms_path.c_str()))
+		{
+			const std::string command = "cp -r " + default_roms_path + "* " + rom_path;
+			system(command.c_str());
+		}
+		else if (my_existsdir("/usr/share/amiberry-lite/roms/"))
+		{
+			const std::string command = "cp -r /usr/share/amiberry-lite/roms/* " + rom_path;
+			system(command.c_str());
+		}
+	}
+	if (!my_existsdir(rp9_path.c_str()))
+		my_mkdir(rp9_path.c_str());
+	if (!my_existsdir(saveimage_dir.c_str()))
+		my_mkdir(saveimage_dir.c_str());
+	if (!my_existsdir(savestate_dir.c_str()))
+		my_mkdir(savestate_dir.c_str());
+	if (!my_existsdir(ripper_path.c_str()))
+		my_mkdir(ripper_path.c_str());
+	if (!my_existsdir(input_dir.c_str()))
+		my_mkdir(input_dir.c_str());
+	if (!my_existsdir(screenshot_dir.c_str()))
+		my_mkdir(screenshot_dir.c_str());
+	if (!my_existsdir(nvram_dir.c_str()))
+		my_mkdir(nvram_dir.c_str());
+	if (!my_existsdir(video_dir.c_str()))
+		my_mkdir(video_dir.c_str());
+	if (!my_existsdir(themes_path.c_str()))
+		my_mkdir(themes_path.c_str());
+    std::string default_theme_file = themes_path + "Default.theme";
+	if (!my_existsfile2(default_theme_file.c_str()))
+	{
+		load_default_theme();
+		save_theme("Default.theme");
 	}
 }
-#endif
 
-static void init_amiberry_paths(const std::string& data_directory, const std::string& home_directory, const std::string& config_directory)
+static void init_amiberry_dirs(const bool portable_mode)
 {
-	current_dir = home_dir = home_directory;
 #ifdef __MACH__
-	// On MacOS, we these files under the user Documents/Amiberry folder by default
-	// If the folder is missing, we create it and copy the files from the app bundle
-	// The exception is the Data folder and amiberry.conf, which live in the user Library/Application Support/Amiberry folder
-	const std::string macos_home_directory = getenv("HOME");
-	const std::string macos_library_directory = macos_home_directory + "/Library/Application Support/Amiberry";
-	const std::string macos_amiberry_directory = macos_home_directory + "/Documents/Amiberry";
+	const std::string amiberry_dir = "Amiberry-Lite";
+#else
+	const std::string amiberry_dir = "amiberry-lite";
+#endif
+	current_dir = home_dir = get_home_directory(portable_mode);
+    data_dir = get_data_directory(portable_mode);
+    config_path = get_config_directory(portable_mode);
+    plugins_dir = get_plugins_directory(portable_mode);
 
-	if (!my_existsdir(macos_amiberry_directory.c_str()) || !my_existsdir(macos_library_directory.c_str()))
+#ifdef __MACH__
+	if constexpr (true)
+#else
+	if (portable_mode)
+#endif
 	{
-		//If  Amiberry library dir is missing, generate it
-		init_macos_library_folders(macos_library_directory);
+		amiberry_conf_file = config_path + "/amiberry-lite.conf";
+		amiberry_ini_file = config_path + "/amiberry-lite.ini";
+		themes_path = config_path;
 
-		// If Amiberry home dir is missing, generate it and all directories under it
-		init_macos_amiberry_folders(macos_amiberry_directory);
-		macos_copy_amiberry_files_to_userdir(macos_amiberry_directory);
+		// These paths are relative to the XDG_DATA_HOME directory
+		controllers_path = whdboot_path = saveimage_dir = savestate_dir =
+		ripper_path = input_dir = screenshot_dir = nvram_dir = video_dir =
+		home_dir;
+
+		whdload_arch_path = floppy_path = harddrive_path =
+		cdrom_path = logfile_path = rom_path = rp9_path =
+		home_dir;
+	}
+	else
+	{
+		std::string xdg_data_home = get_xdg_data_home();
+		if (!my_existsdir(xdg_data_home.c_str()))
+		{
+			// Create the XDG_DATA_HOME directory if it doesn't exist
+			const auto user_home_dir = getenv("HOME");
+			if (user_home_dir != nullptr)
+			{
+				std::string destination = std::string(user_home_dir) + "/.local";
+				my_mkdir(destination.c_str());
+				destination += "/share";
+				my_mkdir(destination.c_str());
+			}
+		}
+		xdg_data_home += "/" + amiberry_dir;
+		if (!my_existsdir(xdg_data_home.c_str()))
+			my_mkdir(xdg_data_home.c_str());
+
+		std::string xdg_config_home = get_xdg_config_home();
+		if (!my_existsdir(xdg_config_home.c_str()))
+			my_mkdir(xdg_config_home.c_str());
+		xdg_config_home += "/" + amiberry_dir;
+		if (!my_existsdir(xdg_config_home.c_str()))
+			my_mkdir(xdg_config_home.c_str());
+
+		// The amiberry.conf file is always in the XDG_CONFIG_HOME/amiberry-lite directory
+		amiberry_conf_file = xdg_config_home + "/amiberry-lite.conf";
+		amiberry_ini_file = xdg_config_home + "/amiberry-lite.ini";
+		themes_path = xdg_config_home;
+
+		// These paths are relative to the XDG_DATA_HOME directory
+		controllers_path = whdboot_path = saveimage_dir = 
+		ripper_path = input_dir = nvram_dir = video_dir =
+		xdg_data_home;
+
+		// These go in $HOME/Amiberry by default
+		whdload_arch_path = floppy_path = harddrive_path = screenshot_dir =
+		savestate_dir = cdrom_path = logfile_path = rom_path = rp9_path =
+		home_dir;
 	}
 
-	config_path = controllers_path = whdboot_path = whdload_arch_path = floppy_path = harddrive_path = cdrom_path =
-		logfile_path = rom_path = rp9_path = saveimage_dir = savestate_dir = ripper_path =
-		input_dir = screenshot_dir = nvram_dir = plugins_dir = video_dir = macos_amiberry_directory;
-
-	config_path.append("/Configurations/");
-	controllers_path.append("/Controllers/");
-	data_dir = macos_library_directory;
-	data_dir.append("/");
-	whdboot_path.append("/Whdboot/");
-	whdload_arch_path.append("/Lha/");
-	floppy_path.append("/Floppies/");
-	harddrive_path.append("/Harddrives/");
-	cdrom_path.append("/CDROMs/");
-	logfile_path.append("/Amiberry.log");
-	rom_path.append("/Kickstarts/");
-	rp9_path.append("/RP9/");
-	saveimage_dir.append("/Savestates/");
-	savestate_dir.append("/Savestates/");
-	ripper_path.append("/Ripper/");
-	input_dir.append("/Inputrecordings/");
-	screenshot_dir.append("/Screenshots/");
-	nvram_dir.append("/Nvram/");
-	plugins_dir.append("/Plugins/");
-	video_dir.append("/Videos/");
-
-	amiberry_conf_file = data_dir;
-	amiberry_conf_file.append("amiberry.conf");
+#ifdef __MACH__
+    controllers_path.append("/Controllers/");
+    whdboot_path.append("/Whdboot/");
+    whdload_arch_path.append("/Lha/");
+    floppy_path.append("/Floppies/");
+    harddrive_path.append("/Harddrives/");
+    cdrom_path.append("/CDROMs/");
+    logfile_path.append("/Amiberry-Lite.log");
+    rom_path.append("/Roms/");
+    rp9_path.append("/RP9/");
+    saveimage_dir.append("/");
+    savestate_dir.append("/Savestates/");
+    ripper_path.append("/Ripper/");
+    input_dir.append("/Inputrecordings/");
+    screenshot_dir.append("/Screenshots/");
+    nvram_dir.append("/Nvram/");
+    video_dir.append("/Videos/");
+	themes_path.append("/Themes/");
 #else
-	data_dir = data_directory;
-	config_path = config_directory;
-	controllers_path = whdboot_path = whdload_arch_path = floppy_path = harddrive_path = cdrom_path =
-		logfile_path = rom_path = rp9_path = saveimage_dir = savestate_dir = ripper_path =
-		input_dir = screenshot_dir = nvram_dir = plugins_dir = video_dir = 
-		home_directory;
-
 	controllers_path.append("/controllers/");
-	data_dir.append("/data/");
 	whdboot_path.append("/whdboot/");
 	whdload_arch_path.append("/lha/");
 	floppy_path.append("/floppies/");
 	harddrive_path.append("/harddrives/");
 	cdrom_path.append("/cdroms/");
-	logfile_path.append("/amiberry.log");
-	rom_path.append("/kickstarts/");
+	logfile_path.append("/amiberry-lite.log");
+	rom_path.append("/roms/");
 	rp9_path.append("/rp9/");
-	saveimage_dir.append("/savestates/");
+	saveimage_dir.append("/");
 	savestate_dir.append("/savestates/");
 	ripper_path.append("/ripper/");
 	input_dir.append("/inputrecordings/");
 	screenshot_dir.append("/screenshots/");
 	nvram_dir.append("/nvram/");
-	plugins_dir.append("/plugins/");
 	video_dir.append("/videos/");
-
-	amiberry_conf_file = config_path;
-	amiberry_conf_file.append("/amiberry.conf");
+	themes_path.append("/themes/");
 #endif
 
 	retroarch_file = config_path;
@@ -4053,9 +4235,11 @@ static void init_amiberry_paths(const std::string& data_directory, const std::st
 
 	floppy_sounds_dir = data_dir;
 	floppy_sounds_dir.append("floppy_sounds/");
+
+    create_missing_amiberry_folders();
 }
 
-void load_amiberry_settings(void)
+void load_amiberry_settings()
 {
 	auto* const fh = zfile_fopen(amiberry_conf_file.c_str(), _T("r"), ZFD_NORMAL);
 	if (fh)
@@ -4070,6 +4254,82 @@ void load_amiberry_settings(void)
 		}
 		zfile_fclose(fh);
 	}
+}
+
+static void romlist_add2(const TCHAR* path, romdata* rd)
+{
+	if (getregmode()) {
+		int ok = 0;
+		if (path[0] == '/' || path[0] == '\\')
+			ok = 1;
+		if (_tcslen(path) > 1 && path[1] == ':')
+			ok = 1;
+		if (!ok) {
+			TCHAR tmp[MAX_DPATH];
+			_tcscpy(tmp, get_rom_path().c_str());
+			_tcscat(tmp, path);
+			romlist_add(tmp, rd);
+			return;
+		}
+	}
+	romlist_add(path, rd);
+}
+
+void read_rom_list(bool initial)
+{
+	int size, size2;
+
+	romlist_clear();
+	const int exists = regexiststree(nullptr, _T("DetectedROMs"));
+	UAEREG* fkey = regcreatetree(nullptr, _T("DetectedROMs"));
+	if (fkey == nullptr)
+		return;
+	if (!exists || forceroms) {
+		//if (initial) {
+		//	scaleresource_init(NULL, 0);
+		//}
+		load_keyring(nullptr, nullptr);
+		scan_roms(forceroms ? 0 : 1);
+	}
+	forceroms = 0;
+	int idx = 0;
+	for (;;) {
+		TCHAR tmp[1000];
+		TCHAR tmp2[1000];
+		size = sizeof(tmp) / sizeof(TCHAR);
+		size2 = sizeof(tmp2) / sizeof(TCHAR);
+		if (!regenumstr(fkey, idx, tmp, &size, tmp2, &size2))
+			break;
+		if (_tcslen(tmp) == 7 || _tcslen(tmp) == 13) {
+			int group = 0;
+			int subitem = 0;
+			const int idx2 = _tstol(tmp + 4);
+			if (_tcslen(tmp) == 13) {
+				group = _tstol(tmp + 8);
+				subitem = _tstol(tmp + 11);
+			}
+			if (idx2 >= 0 && _tcslen(tmp2) > 0) {
+				romdata* rd = getromdatabyidgroup(idx2, group, subitem);
+				if (rd) {
+					TCHAR* s = _tcschr(tmp2, '\"');
+					if (s && _tcslen(s) > 1) {
+						TCHAR* s2 = my_strdup(s + 1);
+						s = _tcschr(s2, '\"');
+						if (s)
+							*s = 0;
+						romlist_add2(s2, rd);
+						xfree(s2);
+					}
+					else {
+						romlist_add2(tmp2, rd);
+					}
+				}
+			}
+		}
+		idx++;
+	}
+	romlist_add(nullptr, nullptr);
+	regclosetree(fkey);
 }
 
 void target_getdate(int* y, int* m, int* d)
@@ -4089,33 +4349,33 @@ void target_reset()
 	clipboard_reset();
 }
 
-bool target_can_autoswitchdevice(void)
+bool target_can_autoswitchdevice()
 {
 	if (mouseactive <= 0)
 		return false;
 	return true;
 }
 
-uae_u32 emulib_target_getcpurate(uae_u32 v, uae_u32* low)
+uae_u32 emulib_target_getcpurate(const uae_u32 v, uae_u32* low)
 {
 	*low = 0;
 	if (v == 1)
 	{
-		*low = 1e+9; /* We have nano seconds */
+		*low = 1e+9; /* We have nanoseconds */
 		return 0;
 	}
 	if (v == 2)
 	{
-		struct timespec ts{};
+		timespec ts{};
 		clock_gettime(CLOCK_MONOTONIC, &ts);
-		const auto time = int64_t(ts.tv_sec) * 1000000000 + ts.tv_nsec;
-		*low = uae_u32(time & 0xffffffff);
-		return uae_u32(time >> 32);
+		const auto time = static_cast<int64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
+		*low = static_cast<uae_u32>(time & 0xffffffff);
+		return static_cast<uae_u32>(time >> 32);
 	}
 	return 0;
 }
 
-void target_shutdown(void)
+void target_shutdown()
 {
 	system("sudo poweroff");
 }
@@ -4128,148 +4388,37 @@ struct winuae	//this struct is put in a6 if you call
 	unsigned int z3offset;    //the offset to add to access Z3 mem from Dll side
 };
 
-void* uaenative_get_uaevar(void)
+void* uaenative_get_uaevar()
 {
-	static struct winuae uaevar;
+	static winuae uaevar;
 #ifdef _WIN32
 	uaevar.amigawnd = mon->hAmigaWnd;
 #endif
 	// WARNING: not 64-bit safe!
-	uaevar.z3offset = (uae_u32)(uae_u64)get_real_address(z3fastmem_bank[0].start) - z3fastmem_bank[0].start;
+	uaevar.z3offset = static_cast<uae_u32>(reinterpret_cast<uae_u64>(get_real_address(z3fastmem_bank[0].start))) - z3fastmem_bank[0].start;
 	return &uaevar;
 }
 
-const TCHAR** uaenative_get_library_dirs(void)
+const TCHAR** uaenative_get_library_dirs()
 {
 	static const TCHAR** nats;
 	static TCHAR* path;
 	static TCHAR* libpath;
 	
-	if (nats == NULL)
+	if (nats == nullptr)
 		nats = xcalloc(const TCHAR*, 4);
-	if (path == NULL) {
+	if (path == nullptr) {
 		path = xcalloc(TCHAR, MAX_DPATH);
 		_tcscpy(path, plugins_dir.c_str());
 	}
-	if (libpath == NULL)
+	if (libpath == nullptr)
 	{
-		libpath = strdup(_T("/usr/lib/amiberry"));
+		libpath = strdup(_T(AMIBERRY_LIBDIR));
 	}
 	nats[0] = home_dir.c_str();
 	nats[1] = path;
 	nats[2] = libpath; 
 	return nats;
-}
-
-bool directory_exists(std::string directory, const std::string& sub_dir)
-{
-	if (directory.empty() || sub_dir.empty()) return false;
-	directory += sub_dir;
-	return my_existsdir(directory.c_str());
-}
-
-std::string get_data_directory()
-{
-	const auto env_data_dir = getenv("AMIBERRY_DATA_DIR");
-	const auto xdg_data_home = getenv("XDG_DATA_HOME");
-
-	if (env_data_dir != nullptr && directory_exists(env_data_dir, "/data"))
-	{
-		// If the ENV variable is set, use it
-		write_log("Using data directory from AMIBERRY_DATA_DIR: %s\n", env_data_dir);
-		return { env_data_dir };
-	}
-	if (directory_exists("/usr/share/amiberry", "/data"))
-	{
-		// If the data directory exists, use it
-		write_log("Using data directory from /usr/share/amiberry\n");
-		return "/usr/share/amiberry";
-	}
-	if (xdg_data_home != nullptr && directory_exists(xdg_data_home, "/data"))
-	{
-		// If the XDG_DATA_HOME is set, use it
-		write_log("Using data directory from XDG_DATA_HOME: %s\n", xdg_data_home);
-		return { xdg_data_home };
-	}
-
-	// Fallback Portable mode, all in the startup path (default behavior for previous Amiberry versions)
-	char tmp[MAX_DPATH];
-	getcwd(tmp, MAX_DPATH);
-	write_log("Using data directory from startup path: %s\n", tmp);
-	return { tmp };
-}
-
-std::string get_home_directory()
-{
-	const auto env_home_dir = getenv("AMIBERRY_HOME_DIR");
-	const auto xdg_data_home = getenv("XDG_DATA_HOME");
-	const auto user_home_dir = getenv("HOME");
-
-	if (env_home_dir != nullptr && my_existsdir(env_home_dir))
-	{
-		// If the ENV variable is set, use it
-		write_log("Using home directory from AMIBERRY_HOME_DIR: %s\n", env_home_dir);
-		return { env_home_dir };
-	}
-	if (xdg_data_home != nullptr)
-	{
-		// If the XDG_DATA_HOME is set, use it
-		write_log("Using home directory from XDG_DATA_HOME: %s\n", xdg_data_home);
-		return { xdg_data_home };
-	}
-	if (user_home_dir != nullptr && directory_exists(user_home_dir, "/.amiberry"))
-	{
-		// $HOME/.amiberry exists, use it
-		write_log("Using home directory from $HOME/.amiberry\n");
-		std::string result = std::string(user_home_dir);
-		return result.append("/.amiberry");
-	}
-
-	// Fallback Portable mode, all in startup path
-	write_log("Using home directory from startup path\n");
-	char tmp[MAX_DPATH];
-	getcwd(tmp, MAX_DPATH);
-	return {tmp};
-}
-
-std::string get_config_directory()
-{
-	const auto env_conf_dir = getenv("AMIBERRY_CONFIG_DIR");
-	const auto xdg_config_home = getenv("XDG_CONFIG_HOME");
-	const auto user_home_dir = getenv("HOME");
-
-	if (env_conf_dir != nullptr && my_existsdir(env_conf_dir))
-	{
-		// If the ENV variable is set, use it
-		write_log("Using config directory from XDG_CONFIG_HOME: %s\n", env_conf_dir);
-		return { env_conf_dir };
-	}
-	if (xdg_config_home != nullptr && directory_exists(xdg_config_home, "/amiberry"))
-	{
-		// If the XDG_CONFIG_HOME is set, use it
-		write_log("Using config directory from XDG_CONFIG_HOME: %s\n", xdg_config_home);
-		return { std::string(xdg_config_home) + "/amiberry" };
-	}
-	if (user_home_dir != nullptr && directory_exists(user_home_dir, "/.config/amiberry"))
-	{
-		// $HOME/.config/amiberry exists, use it
-		write_log("Using config directory from $HOME/.config/amiberry\n");
-		auto result = std::string(user_home_dir);
-		return result.append("/.config/amiberry");
-	}
-	if (user_home_dir != nullptr && directory_exists(user_home_dir, "/.amiberry/conf"))
-	{
-		// $HOME/.amiberry/conf exists, use it
-		write_log("Using config directory from $HOME/.amiberry/conf\n");
-		auto result = std::string(user_home_dir);
-		return result.append("/.amiberry/conf");
-	}
-
-	// Fallback Portable mode, all in startup path
-	write_log("Using config directory from startup path\n");
-	char tmp[MAX_DPATH];
-	getcwd(tmp, MAX_DPATH);
-	return { std::string(tmp) + "/conf" };
 }
 
 int main(int argc, char* argv[])
@@ -4298,13 +4447,7 @@ int main(int argc, char* argv[])
 	max_uae_width = 8192;
 	max_uae_height = 8192;
 
-	const std::string data_directory = get_data_directory();
-	const std::string home_directory = get_home_directory();
-	const std::string config_directory = get_config_directory();
-
-	init_amiberry_paths(data_directory, home_directory, config_directory);
-
-	// Parse command line to get possibly set amiberry_config.
+	// Parse command line to possibly set amiberry_config.
 	// Do not remove used args yet.
 	if (!parse_amiberry_cmd_line(&argc, argv, 0))
 	{
@@ -4312,6 +4455,10 @@ int main(int argc, char* argv[])
 		usage();
 		abort();
 	}
+	// Check if a file with the name "amiberry.portable" exists in the current directory
+	// If it does, we will set portable_mode to true
+	const bool portable_mode = my_existsfile2("amiberry.portable");
+	init_amiberry_dirs(portable_mode);
 	load_amiberry_settings();
 	// Parse command line and remove used amiberry specific args
 	// and modify both argc & argv accordingly
@@ -4322,7 +4469,21 @@ int main(int argc, char* argv[])
 		abort();
 	}
 
-	snprintf(savestate_fname, sizeof savestate_fname, "%s/default.ads", fix_trailing(savestate_dir).c_str());
+	reginitializeinit(&inipath);
+	if (getregmode() == nullptr)
+	{
+		const std::string ini_file_path = get_ini_file_path();
+		TCHAR* path = my_strdup(ini_file_path.c_str());;
+		auto f = fopen(path, _T("r"));
+		if (!f)
+			f = fopen(path, _T("w"));
+		if (f) {
+			fclose(f);
+			reginitializeinit(&path);
+		}
+		xfree(path);
+	}
+
 	logging_init();
 #if defined (CPU_arm)
 	memset(&action, 0, sizeof action);
@@ -4358,9 +4519,9 @@ int main(int argc, char* argv[])
 	}
 #endif
 	alloc_AmigaMem();
-	if (lstAvailableROMs.empty())
-		RescanROMs();
 
+	if (!init_mmtimer())
+		return 0;
 	uae_time_calibrate();
 	
 	if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
@@ -4374,6 +4535,9 @@ int main(int argc, char* argv[])
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, 0);
 #endif
 	(void)atexit(SDL_Quit);
+
+	read_rom_list(true);
+	load_keyring(nullptr, nullptr);
 	write_log(_T("Enumerating display devices.. \n"));
 	enumeratedisplays();
 	write_log(_T("Sorting devices and modes...\n"));
@@ -4411,9 +4575,9 @@ int main(int argc, char* argv[])
 	}
 	ioctl(0, KDSETLED, kbd_led_status);
 #else
-	// I tried to use Apple IO KIT to poll the status of the various leds but it requires a special input reading permission (that the user needs to explicitely allow 
+	// I tried to use Apple IO KIT to poll the status of the various leds, but it requires a special input reading permission (that the user needs to explicitly allow
 	// for the app on launch) and in addition to that it doesn't consistently work well enough, more often than not we'll get a permission denied from the IOKIT framework 
-	// which causes the app to silently fail anyway.  I can't find recent examples for Mac OS that work well enough and I feel it's not good to rely on a framework that
+	// which causes the app to silently fail anyway.  I can't find recent examples for macOS that work well enough and I feel it's not good to rely on a framework that
 	// doesn't work all the time
 
 	// We'll just call SDL and do a rudimentary state check instead
@@ -4447,6 +4611,7 @@ int main(int argc, char* argv[])
 	paraport_mask = paraport_init ();
 #endif
 #ifdef SERIAL_PORT
+	shmem_serial_create();
 	enumserialports();
 #endif
 	enummidiports();
@@ -4467,7 +4632,22 @@ int main(int argc, char* argv[])
 	// Unsolved for OS X
 #endif
 
-	ClearAvailableROMList();
+#ifdef SERIAL_PORT
+	shmem_serial_delete();
+#endif
+#ifdef AHI
+	ahi_close_sound();
+#endif
+#ifdef PARALLEL_DIRECT
+	paraport_free();
+	closeprinter();
+#endif
+#ifdef RETROPLATFORM
+	rp_free();
+#endif
+	close_console();
+	regclosetree(nullptr);
+
 	romlist_clear();
 	free_keyring();
 	free_AmigaMem();
@@ -4486,7 +4666,7 @@ void toggle_mousegrab()
 	activationtoggle(0, false);
 }
 
-bool get_plugin_path(TCHAR* out, int len, const TCHAR* path)
+bool get_plugin_path(TCHAR* out, const int len, const TCHAR* path)
 {
 	if (strcmp(path, "floppysounds") == 0) {
 		if (floppy_sounds_dir[0]) {
@@ -4496,6 +4676,12 @@ bool get_plugin_path(TCHAR* out, int len, const TCHAR* path)
 			strncpy(out, "floppy_sounds", len);
 		}
 		// make sure out is null-terminated in any case
+		out[len - 1] = '\0';
+	}
+	else if (strcmp(path, "abr") == 0)
+	{
+		strncpy(out, data_dir.c_str(), len - 1);
+		strncat(out, "abr/", len - 1);
 		out[len - 1] = '\0';
 	}
 	else {
@@ -4551,18 +4737,6 @@ bool is_mainthread()
 	return uae_thread_get_id(nullptr) == mainthreadid;
 }
 
-static struct netdriverdata *ndd[MAX_TOTAL_NET_DEVICES + 1];
-static int net_enumerated;
-
-struct netdriverdata **target_ethernet_enumerate(void)
-{
-	if (net_enumerated)
-		return ndd;
-	ethernet_enumerate(ndd, 0);
-	net_enumerated = 1;
-	return ndd;
-}
-
 void clear_whdload_prefs()
 {
 	whdload_prefs.filename.clear();
@@ -4577,15 +4751,11 @@ void clear_whdload_prefs()
 	whdload_prefs.custom.clear();
 }
 
-#include <fstream>
-#include <iostream>
-#include <sstream>
-
 void save_controller_mapping_to_file(const controller_mapping& input, const std::string& filename)
 {
 	std::ofstream out_file(filename);
 	if (!out_file) {
-		std::cerr << "Unable to open file " << filename << std::endl;
+		std::cerr << "Unable to open file " << filename << '\n';
 		return;
 	}
 
@@ -4635,7 +4805,7 @@ void read_controller_mapping_from_file(controller_mapping& input, const std::str
 {
 	std::ifstream in_file(filename);
 	if (!in_file) {
-		std::cerr << "Unable to open file " << filename << std::endl;
+		std::cerr << "Unable to open file " << filename << '\n';
 		return;
 	}
 
@@ -4720,4 +4890,36 @@ void read_controller_mapping_from_file(controller_mapping& input, const std::str
 	}
 
 	in_file.close();
+}
+
+void target_setdefaultstatefilename(const TCHAR* name)
+{
+	TCHAR path[MAX_DPATH];
+	get_savestate_path(path, sizeof(path) / sizeof(TCHAR));
+	if (!name || !name[0]) {
+		_tcscat(path, _T("default.uss"));
+	}
+	else {
+		const TCHAR* p2 = _tcsrchr(name, '\\');
+		const TCHAR* p3 = _tcsrchr(name, '/');
+		const TCHAR* p1 = NULL;
+		if (p2 >= p3) {
+			p1 = p2;
+		}
+		else if (p3 >= p2) {
+			p1 = p3;
+		}
+		if (p1) {
+			_tcscat(path, p1 + 1);
+		}
+		else {
+			_tcscat(path, name);
+		}
+		const TCHAR* p = _tcsrchr(path, '.');
+		if (p) {
+			path[_tcslen(path) - ((path + _tcslen(path)) - p)] = 0;
+			_tcscat(path, _T(".uss"));
+		}
+	}
+	_tcscpy(savestate_fname, path);
 }

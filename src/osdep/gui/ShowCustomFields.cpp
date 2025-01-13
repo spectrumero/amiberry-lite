@@ -106,9 +106,7 @@ static ShowCustomFieldsActionListener* showCustomFieldsActionListener;
 
 void create_custom_field(custom_widget& widget, const int number, const std::string& caption, const whdload_custom& custom_field, int& pos_y, const int custom_list_index)
 {
-	constexpr int textfield_width = 350;
 	constexpr int pos_x1 = DISTANCE_BORDER;
-	constexpr int pos_x2 = 200;
 
 	for (int i = 0; i < number; i++) {
 		std::string id;
@@ -118,6 +116,8 @@ void create_custom_field(custom_widget& widget, const int number, const std::str
 		widget.lbl.emplace_back(label);
 		wndShowCustomFields->add(label);
 
+		int pos_x2 = label->getWidth() + 15;
+
 		switch (custom_field.type) {
 		case bit_type: {
 			auto checkbox = new gcn::CheckBox(custom_field.label_bit_pairs[i].first);
@@ -126,7 +126,7 @@ void create_custom_field(custom_widget& widget, const int number, const std::str
 			checkbox->setId("chkCustomFieldBit_" + std::to_string(i));
 			checkbox->setForegroundColor(gui_foreground_color);
 			checkbox->setBaseColor(gui_base_color);
-			checkbox->setBackgroundColor(gui_textbox_background_color);
+			checkbox->setBackgroundColor(gui_background_color);
 			checkbox->setPosition(pos_x2, pos_y);
 			widget.bit.emplace_back(checkbox);
 			wndShowCustomFields->add(checkbox);
@@ -140,7 +140,7 @@ void create_custom_field(custom_widget& widget, const int number, const std::str
 			checkbox->setId("chkCustomFieldBool_" + std::to_string(i));
 			checkbox->setForegroundColor(gui_foreground_color);
 			checkbox->setBaseColor(gui_base_color);
-			checkbox->setBackgroundColor(gui_textbox_background_color);
+			checkbox->setBackgroundColor(gui_background_color);
 			checkbox->setPosition(pos_x2, pos_y);
 			widget.boolean.emplace_back(checkbox);
 			wndShowCustomFields->add(checkbox);
@@ -148,8 +148,12 @@ void create_custom_field(custom_widget& widget, const int number, const std::str
 			break;
 		}
 		case list_type: {
+			constexpr int textfield_width = 300;
 			label->setCaption(custom_field.caption);
 			label->adjustSize();
+			pos_x2 = textfield_width + 15;
+			label->setPosition(pos_x2, pos_y);
+
 			for (const auto& item : custom_field.labels)
 			{
 				custom_list[custom_list_index].add(item);
@@ -158,11 +162,11 @@ void create_custom_field(custom_widget& widget, const int number, const std::str
 			dropdown->setId("cboCustomFieldList_" + std::to_string(i));
 			dropdown->setSize(textfield_width, dropdown->getHeight());
 			dropdown->setBaseColor(gui_base_color);
-			dropdown->setBackgroundColor(gui_textbox_background_color);
+			dropdown->setBackgroundColor(gui_background_color);
 			dropdown->setForegroundColor(gui_foreground_color);
 			dropdown->setSelectionColor(gui_selection_color);
 			dropdown->addActionListener(showCustomFieldsActionListener);
-			dropdown->setPosition(pos_x2, pos_y);
+			dropdown->setPosition(pos_x1, pos_y);
 			widget.list.emplace_back(dropdown);
 			wndShowCustomFields->add(dropdown);
 			pos_y += dropdown->getHeight() + 8;
@@ -205,6 +209,7 @@ static void InitShowCustomFields()
 	wndShowCustomFields->setBaseColor(gui_base_color);
 	wndShowCustomFields->setForegroundColor(gui_foreground_color);
 	wndShowCustomFields->setTitleBarHeight(TITLEBAR_HEIGHT);
+	wndShowCustomFields->setMovable(false);
 
 	showCustomFieldsActionListener = new ShowCustomFieldsActionListener();
 	int pos_y = DISTANCE_BORDER;

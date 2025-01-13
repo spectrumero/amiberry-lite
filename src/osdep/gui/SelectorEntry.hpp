@@ -1,6 +1,5 @@
 #pragma once
-
-#include <guisan/basiccontainer.hpp>
+#include <guisan/widget.hpp>
 #include <guisan/platform.hpp>
 #include <guisan/widgetlistener.hpp>
 #include <guisan/image.hpp>
@@ -27,10 +26,10 @@ namespace gcn
 
 		void draw(Graphics* graphics) override;
 
-		void setInactiveColor(const Color& color);
-		void setActiveColor(const Color& color);
+		void setInactiveColor(Color color);
+		void setActiveColor(Color color);
 		void setActive(bool active);
-		bool getActive() const;
+		[[nodiscard]] bool getActive() const;
 
 		void widgetResized(const Event& event) override;
 

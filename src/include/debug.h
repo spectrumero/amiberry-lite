@@ -363,7 +363,10 @@ extern void debug_draw(uae_u8 *buf, int bpp, int line, int width, int height, ua
 #define MW_MASK_NONE			0x80000000
 #define MW_MASK_ALL				(MW_MASK_NONE - 1)
 
-STATIC_INLINE void activate_debugger (void) { };
+STATIC_INLINE void activate_debugger () { }
+STATIC_INLINE void activate_debugger_new () { }
+STATIC_INLINE void activate_debugger_new_pc (uaecptr pc, int len) { }
+
 
 #endif /* DEBUGGER */
 

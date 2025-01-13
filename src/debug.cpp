@@ -143,7 +143,7 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 					size_out /= 1024;
 					size_ext = 'M';
 				}
-				_stprintf (txt, _T("%08X %7d%c/%d = %7d%c %s%s%c %s %s"), (j << 16) | bankoffset, size_out, size_ext,
+				_sntprintf (txt, sizeof txt, _T("%08X %7d%c/%d = %7d%c %s%s%c %s %s"), (j << 16) | bankoffset, size_out, size_ext,
 					mirrored, mirrored ? size_out / mirrored : size_out, size_ext,
 					(a1->flags & ABFLAG_CACHE_ENABLE_INS) ? _T("I") : _T("-"),
 					(a1->flags & ABFLAG_CACHE_ENABLE_DATA) ? _T("D") : _T("-"),
@@ -157,7 +157,7 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 					if (a1->check(((j << 16) | bankoffset), (size * 1024) / mirrored))
 						crc = get_crc32 (a1->xlateaddr((j << 16) | bankoffset), (size * 1024) / mirrored);
 					struct romdata *rd = getromdatabycrc (crc);
-					_stprintf (p, _T(" (%08X)"), crc);
+					_sntprintf (p, sizeof p, _T(" (%08X)"), crc);
 					if (rd) {
 						tmp[0] = '=';
 						getromname (rd, tmp + 1);
@@ -185,8 +185,8 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 							r->alias = j << 16;
 							r->flags |= UAE_MEMORY_REGION_ALIAS | UAE_MEMORY_REGION_MIRROR;
 						}
-						_stprintf(r->name, _T("%s"), name);
-						_stprintf(r->rom_name, _T("%s"), tmp);
+						_sntprintf(r->name, sizeof r->name, _T("%s"), name);
+						_sntprintf(r->rom_name, sizeof r->rom_name, _T("%s"), tmp);
 						map->num_regions += 1;
 					}
 				}
@@ -194,12 +194,12 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 				if (log > 0)
 					write_log (_T("%s"), txt);
 				else if (log == 0)
-					write_log (txt);
+					console_out (txt);
 				if (tmp[0]) {
 					if (log > 0)
 						write_log (_T("%s"), tmp);
 					else if (log == 0)
-						write_log (tmp);
+						console_out (tmp);
 				}
 				if (!sb)
 					break;
@@ -209,7 +209,9 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 			a1 = a2;
 		}
 	}
-	//pci_dump(log);
+#ifdef WITH_PCI
+	pci_dump(log);
+#endif
 	currprefs.illegal_mem = imold;
 }
 

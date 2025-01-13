@@ -81,7 +81,8 @@ static amigamodels amodels[] = {
 		4, "Amiga 1000", {
 			"512 KB Chip RAM",
 			"ICS Denise without EHB support",
-			"256 KB Chip RAM"
+			"256 KB Chip RAM",
+			"A1000 Velvet prototype",
 			"\0"
 		}
 	},
@@ -89,7 +90,16 @@ static amigamodels amodels[] = {
 		5, "Amiga 1200", {
 			"Basic non-expanded configuration",
 			"4 MB Fast RAM expanded configuration",
+#ifdef WITH_CPUBOARD
+			"Blizzard 1230 IV",
+			"Blizzard 1240",
+			"Blizzard 1260",
+#ifdef WITH_PPC
+			"Blizzard PPC",
+#endif
+#else
 			"8 MB Fast RAM expanded configuration"
+#endif
 			"\0"
 		}
 	},
@@ -105,6 +115,9 @@ static amigamodels amodels[] = {
 		1, "Amiga 4000", {
 			"68030, 3.1 ROM, 2MB Chip + 8MB Fast",
 			"68040, 3.1 ROM, 2MB Chip + 8MB Fast",
+#ifdef WITH_PPC
+			"CyberStorm PPC",
+#endif
 			"\0"
 		}
 	},
@@ -127,13 +140,31 @@ static amigamodels amodels[] = {
 	{
 		4, "CDTV", {
 			"CDTV",
+			"Floppy drive and 64KB SRAM card expanded",
+			"CDTV-CR",
+			"\0"
+		}
+	},
+	{4, "American Laser Games / Picmatic", {
+			"\0"
+		}
+	},
+	{
+		4, "Arcadia Multi Select system", {
+			"\0"
+		}
+	},
+	{
+		1, "Macrosystem", {
+			"DraCo",
+			"Casablanca",
 			"\0"
 		}
 	},
 	{-1}
 };
 
-static const int numModels = 10;
+static constexpr int numModels = 13;
 static int numModelConfigs = 0;
 static bool bIgnoreListChange = true;
 
@@ -177,10 +208,13 @@ static void SetControlState(const int model)
 	case 5: // A3000
 	case 6: // A4000
 	case 7: // A4000T
+	case 12: // Macrosystem
 		break;
 
 	case 8: // CD32
 	case 9: // CDTV
+	case 10: // American Laser Games / Picmatic
+	case 11: // Arcadia Multi Select system
 		// No floppy drive available, CD available
 		df0_editable = false;
 		df1_visible = false;
@@ -234,6 +268,7 @@ static void AdjustPrefs()
 		break;
 	case 6: // A4000
 	case 7: // A4000T
+	case 12: // Macrosystem
 		// df0 always active
 		changed_prefs.floppyslots[0].dfxtype = DRV_35_HD;
 		changed_prefs.floppyslots[1].dfxtype = DRV_NONE;
@@ -248,6 +283,8 @@ static void AdjustPrefs()
 
 	case 8: // CD32
 	case 9: // CDTV
+	case 10:// American Laser Games / Picmatic
+	case 11:// Arcadia Multi Select system
 		// No floppy drive available, CD available
 		changed_prefs.floppyslots[0].dfxtype = DRV_NONE;
 		changed_prefs.floppyslots[1].dfxtype = DRV_NONE;
@@ -332,7 +369,8 @@ public:
 
 					RefreshCDListModel();
 					AdjustDropDownControls();
-					SetLastActiveConfig(tmp.c_str());
+					if (!last_loaded_config[0])
+						set_last_active_config(tmp.c_str());
 				}
 			}
 			cmdCDSelect->requestFocus();
@@ -364,13 +402,12 @@ public:
 					bIgnoreListChange = true;
 					cboCDFile->setSelected(0);
 					bIgnoreListChange = false;
-					SetLastActiveConfig(element.c_str());
+					if (!last_loaded_config[0])
+						set_last_active_config(element.c_str());
 				}
 			}
 		}
-
-		RefreshPanelHD();
-		RefreshPanelQuickstart();
+		refresh_all_panels();
 	}
 };
 
@@ -408,7 +445,7 @@ public:
 				whdload_auto_prefs(&changed_prefs, whdload_prefs.whdload_filename.c_str());
 
 				AdjustDropDownControls();
-				SetLastActiveConfig(whdload_prefs.whdload_filename.c_str());
+				set_last_active_config(whdload_prefs.whdload_filename.c_str());
 			}
 			cmdWhdloadSelect->requestFocus();
 		}
@@ -436,6 +473,9 @@ public:
 					bIgnoreListChange = false;
 				}
 				whdload_auto_prefs(&changed_prefs, whdload_prefs.whdload_filename.c_str());
+
+				AdjustDropDownControls();
+				set_last_active_config(whdload_prefs.whdload_filename.c_str());
 			}
 		}
 		refresh_all_panels();
@@ -512,9 +552,10 @@ public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
 		int sub;
+		auto action = actionEvent.getSource();
 		for (auto i = 0; i < 2; ++i)
 		{
-			if (actionEvent.getSource() == chkqsDFx[i])
+			if (action == chkqsDFx[i])
 			{
 				//---------------------------------------
 				// Drive enabled/disabled
@@ -523,11 +564,8 @@ public:
 					changed_prefs.floppyslots[i].dfxtype = DRV_35_DD;
 				else
 					changed_prefs.floppyslots[i].dfxtype = DRV_NONE;
-
-				RefreshPanelFloppy();
-				RefreshPanelQuickstart();
 			}
-			else if (actionEvent.getSource() == chkqsDFxWriteProtect[i])
+			else if (action == chkqsDFxWriteProtect[i])
 			{
 				//---------------------------------------
 				// Write-protect changed
@@ -540,13 +578,14 @@ public:
 					isSelected())
 				{
 					// Failed to change write protection -> maybe filesystem doesn't support this
+					chkqsDFxWriteProtect[i]->setSelected(!chkqsDFxWriteProtect[i]->isSelected());
 					ShowMessage("Set/Clear write protect", "Failed to change write permission.",
 						"Maybe underlying filesystem doesn't support this.", "", "Ok", "");
 					chkqsDFxWriteProtect[i]->requestFocus();
 				}
 				DISK_reinsert(i);
 			}
-			else if (actionEvent.getSource() == cboqsDFxType[i])
+			else if (action == cboqsDFxType[i])
 			{
 				const auto selectedType = cboqsDFxType[i]->getSelected();
 				const int dfxtype = todfxtype(i, selectedType - 1, &sub);
@@ -555,7 +594,7 @@ public:
 				if (dfxtype == DRV_FB)
 				{
 					TCHAR tmp[32];
-					_stprintf(tmp, _T("%d:%s"), selectedType - 5, drivebridgeModes[selectedType - 6].data());
+					_sntprintf(tmp, sizeof tmp, _T("%d:%s"), selectedType - 5, drivebridgeModes[selectedType - 6].data());
 					_tcscpy(changed_prefs.floppyslots[i].dfxsubtypeid, tmp);
 				}
 				else
@@ -563,7 +602,7 @@ public:
 					changed_prefs.floppyslots[i].dfxsubtypeid[0] = 0;
 				}
 			}
-			else if (actionEvent.getSource() == cmdqsDFxInfo[i])
+			else if (action == cmdqsDFxInfo[i])
 			{
 				//---------------------------------------
 				// Show info about current disk-image
@@ -571,7 +610,7 @@ public:
 				if (changed_prefs.floppyslots[i].dfxtype != DRV_NONE && strlen(changed_prefs.floppyslots[i].df) > 0)
 					DisplayDiskInfo(i);
 			}
-			else if (actionEvent.getSource() == cmdqsDFxEject[i])
+			else if (action == cmdqsDFxEject[i])
 			{
 				//---------------------------------------
 				// Eject disk from drive
@@ -580,7 +619,7 @@ public:
 				strncpy(changed_prefs.floppyslots[i].df, "", MAX_DPATH);
 				AdjustDropDownControls();
 			}
-			else if (actionEvent.getSource() == cmdqsDFxSelect[i])
+			else if (action == cmdqsDFxSelect[i])
 			{
 				//---------------------------------------
 				// Select disk for drive
@@ -602,12 +641,13 @@ public:
 						RefreshDiskListModel();
 
 						AdjustDropDownControls();
-						SetLastActiveConfig(tmp.c_str());
+						if (!last_loaded_config[0])
+							set_last_active_config(tmp.c_str());
 					}
 				}
 				cmdqsDFxSelect[i]->requestFocus();
 			}
-			else if (actionEvent.getSource() == cboqsDFxFile[i])
+			else if (action == cboqsDFxFile[i])
 			{
 				//---------------------------------------
 				// Disk image from list selected
@@ -636,14 +676,14 @@ public:
 							bIgnoreListChange = true;
 							cboqsDFxFile[i]->setSelected(0);
 							bIgnoreListChange = false;
-							SetLastActiveConfig(element.c_str());
+							if (!last_loaded_config[0])
+								set_last_active_config(element.c_str());
 						}
 					}
 				}
 			}
-			RefreshPanelFloppy();
-			RefreshPanelQuickstart();
 		}
+		refresh_all_panels();
 	}
 };
 
@@ -651,7 +691,6 @@ static QSDiskActionListener* qs_diskActionListener;
 
 void InitPanelQuickstart(const config_category& category)
 {
-	int posX;
 	int posY = DISTANCE_BORDER;
 
 	amigaModelList.clear();
@@ -685,7 +724,7 @@ void InitPanelQuickstart(const config_category& category)
 	cboModel = new gcn::DropDown(&amigaModelList);
 	cboModel->setSize(160, cboModel->getHeight());
 	cboModel->setBaseColor(gui_base_color);
-	cboModel->setBackgroundColor(gui_textbox_background_color);
+	cboModel->setBackgroundColor(gui_background_color);
 	cboModel->setForegroundColor(gui_foreground_color);
 	cboModel->setSelectionColor(gui_selection_color);
 	cboModel->setId("cboAModel");
@@ -697,7 +736,7 @@ void InitPanelQuickstart(const config_category& category)
 	cboConfig->setSize(category.panel->getWidth() - lblConfig->getWidth() - 8 - 2 * DISTANCE_BORDER,
 					   cboConfig->getHeight());
 	cboConfig->setBaseColor(gui_base_color);
-	cboConfig->setBackgroundColor(gui_textbox_background_color);
+	cboConfig->setBackgroundColor(gui_background_color);
 	cboConfig->setForegroundColor(gui_foreground_color);
 	cboConfig->setSelectionColor(gui_selection_color);
 	cboConfig->setId("cboAConfig");
@@ -706,7 +745,7 @@ void InitPanelQuickstart(const config_category& category)
 	chkNTSC = new gcn::CheckBox("NTSC");
 	chkNTSC->setId("qsNTSC");
 	chkNTSC->setBaseColor(gui_base_color);
-	chkNTSC->setBackgroundColor(gui_textbox_background_color);
+	chkNTSC->setBackgroundColor(gui_background_color);
 	chkNTSC->setForegroundColor(gui_foreground_color);
 	chkNTSC->addActionListener(quickstartActionListener);
 
@@ -718,13 +757,13 @@ void InitPanelQuickstart(const config_category& category)
 		snprintf(tmp, 20, "qsDF%d", i);
 		chkqsDFx[i]->setId(tmp);
 		chkqsDFx[i]->setBaseColor(gui_base_color);
-		chkqsDFx[i]->setBackgroundColor(gui_textbox_background_color);
+		chkqsDFx[i]->setBackgroundColor(gui_background_color);
 		chkqsDFx[i]->setForegroundColor(gui_foreground_color);
 		chkqsDFx[i]->addActionListener(qs_diskActionListener);
 
 		cboqsDFxType[i] = new gcn::DropDown(&qsDriveTypeList);
 		cboqsDFxType[i]->setBaseColor(gui_base_color);
-		cboqsDFxType[i]->setBackgroundColor(gui_textbox_background_color);
+		cboqsDFxType[i]->setBackgroundColor(gui_background_color);
 		cboqsDFxType[i]->setForegroundColor(gui_foreground_color);
 		cboqsDFxType[i]->setSelectionColor(gui_selection_color);
 		snprintf(tmp, 20, "cboqsType%d", i);
@@ -735,7 +774,7 @@ void InitPanelQuickstart(const config_category& category)
 		snprintf(tmp, 20, "qsWP%d", i);
 		chkqsDFxWriteProtect[i]->setId(tmp);
 		chkqsDFxWriteProtect[i]->setBaseColor(gui_base_color);
-		chkqsDFxWriteProtect[i]->setBackgroundColor(gui_textbox_background_color);
+		chkqsDFxWriteProtect[i]->setBackgroundColor(gui_background_color);
 		chkqsDFxWriteProtect[i]->setForegroundColor(gui_foreground_color);
 		chkqsDFxWriteProtect[i]->addActionListener(qs_diskActionListener);
 
@@ -768,7 +807,7 @@ void InitPanelQuickstart(const config_category& category)
 		cboqsDFxFile[i]->setId(tmp);
 		cboqsDFxFile[i]->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, cboqsDFxFile[i]->getHeight());
 		cboqsDFxFile[i]->setBaseColor(gui_base_color);
-		cboqsDFxFile[i]->setBackgroundColor(gui_textbox_background_color);
+		cboqsDFxFile[i]->setBackgroundColor(gui_background_color);
 		cboqsDFxFile[i]->setForegroundColor(gui_foreground_color);
 		cboqsDFxFile[i]->setSelectionColor(gui_selection_color);
 		cboqsDFxFile[i]->addActionListener(qs_diskActionListener);
@@ -777,7 +816,7 @@ void InitPanelQuickstart(const config_category& category)
 	chkCD = new gcn::CheckBox("CD drive");
 	chkCD->setId("qsCD drive");
 	chkCD->setBaseColor(gui_base_color);
-	chkCD->setBackgroundColor(gui_textbox_background_color);
+	chkCD->setBackgroundColor(gui_background_color);
 	chkCD->setForegroundColor(gui_foreground_color);
 	chkCD->setEnabled(false);
 
@@ -798,7 +837,7 @@ void InitPanelQuickstart(const config_category& category)
 	cboCDFile = new gcn::DropDown(&cdfileList);
 	cboCDFile->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, cboCDFile->getHeight());
 	cboCDFile->setBaseColor(gui_base_color);
-	cboCDFile->setBackgroundColor(gui_textbox_background_color);
+	cboCDFile->setBackgroundColor(gui_background_color);
 	cboCDFile->setForegroundColor(gui_foreground_color);
 	cboCDFile->setSelectionColor(gui_selection_color);
 	cboCDFile->setId("cboCD");
@@ -807,7 +846,7 @@ void InitPanelQuickstart(const config_category& category)
 	chkQuickstartMode = new gcn::CheckBox("Start in Quickstart mode");
 	chkQuickstartMode->setId("qsMode");
 	chkQuickstartMode->setBaseColor(gui_base_color);
-	chkQuickstartMode->setBackgroundColor(gui_textbox_background_color);
+	chkQuickstartMode->setBackgroundColor(gui_background_color);
 	chkQuickstartMode->setForegroundColor(gui_foreground_color);
 	chkQuickstartMode->addActionListener(quickstartActionListener);
 
@@ -822,7 +861,7 @@ void InitPanelQuickstart(const config_category& category)
 	cboWhdload = new gcn::DropDown(&whdloadFileList);
 	cboWhdload->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, cboWhdload->getHeight());
 	cboWhdload->setBaseColor(gui_base_color);
-	cboWhdload->setBackgroundColor(gui_textbox_background_color);
+	cboWhdload->setBackgroundColor(gui_background_color);
 	cboWhdload->setForegroundColor(gui_foreground_color);
 	cboWhdload->setSelectionColor(gui_selection_color);
 	cboWhdload->setId("cboQsWhdload");
@@ -852,7 +891,7 @@ void InitPanelQuickstart(const config_category& category)
 
 	for (auto i = 0; i < 2; ++i)
 	{
-		posX = DISTANCE_BORDER;
+		int posX = DISTANCE_BORDER;
 		category.panel->add(chkqsDFx[i], posX, posY);
 		posX += chkqsDFx[i]->getWidth() + DISTANCE_NEXT_X;
 		category.panel->add(cboqsDFxType[i], posX, posY);
@@ -1016,8 +1055,8 @@ void RefreshPanelQuickstart()
 		else
 			chkqsDFx[i]->setEnabled(prev_available);
 
-		cmdqsDFxInfo[i]->setEnabled(drive_enabled && nn < 5 && disk_in_drive);
 		chkqsDFxWriteProtect[i]->setEnabled(drive_enabled && !changed_prefs.floppy_read_only && nn < 5);
+		cmdqsDFxInfo[i]->setEnabled(drive_enabled && nn < 5 && disk_in_drive);
 		cmdqsDFxEject[i]->setEnabled(drive_enabled && nn < 5 && disk_in_drive);
 		cmdqsDFxSelect[i]->setEnabled(drive_enabled && nn < 5);
 		cboqsDFxFile[i]->setEnabled(drive_enabled && nn < 5);

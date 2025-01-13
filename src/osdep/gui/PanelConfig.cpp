@@ -11,7 +11,6 @@
 #include "uae.h"
 #include "gui_handling.h"
 
-static char last_active_config[MAX_DPATH] = {'\0'};
 static int ensureVisible = -1;
 
 static gcn::Button* cmdLoad;
@@ -23,12 +22,6 @@ static gcn::Label* lblDesc;
 static gcn::TextField* txtDesc;
 static gcn::ListBox* lstConfigs;
 static gcn::ScrollArea* scrAreaConfigs;
-
-void SetLastActiveConfig(const char* filename)
-{
-	extract_filename(filename, last_active_config);
-	remove_file_extension(last_active_config);
-}
 
 static gcn::StringListModel configsList;
 
@@ -49,7 +42,7 @@ static void InitConfigsList()
 	}
 }
 
-class ConfigButtonActionListener : public gcn::ActionListener
+class ConfigActionListener : public gcn::ActionListener
 {
 public:
 	void action(const gcn::ActionEvent& actionEvent) override
@@ -69,7 +62,6 @@ public:
 			}
 			
 			target_cfgfile_load(&changed_prefs, ConfigFilesList[i]->FullPath, CONFIG_TYPE_DEFAULT, 0);
-			strncpy(last_active_config, ConfigFilesList[i]->Name, MAX_DPATH);
 			refresh_all_panels();
 		}
 		else if (actionEvent.getSource() == cmdSave)
@@ -77,9 +69,9 @@ public:
 			//-----------------------------------------------
 			// Save current configuration
 			//-----------------------------------------------
-			char filename[MAX_DPATH];
 			if (!txtName->getText().empty())
 			{
+				char filename[MAX_DPATH];
 				get_configuration_path(filename, MAX_DPATH);
 				strncat(filename, txtName->getText().c_str(), MAX_DPATH - 1);
 				strncat(filename, ".uae", MAX_DPATH - 1);
@@ -96,14 +88,18 @@ public:
 			//-----------------------------------------------
 			// Delete selected config
 			//-----------------------------------------------
-			char msg[256];
 			i = lstConfigs->getSelected();
 			if (i >= 0 && ConfigFilesList[i]->Name[0] != '\0')
 			{
-				snprintf(msg, 256, "Do you want to delete '%s' ?", ConfigFilesList[i]->Name);
+				char msg[256];
+				(void)snprintf(msg, 256, "Do you want to delete '%s' ?", ConfigFilesList[i]->Name);
 				if (ShowMessage("Delete Configuration", msg, "", "", "Yes", "No"))
 				{
-					remove(ConfigFilesList[i]->FullPath);
+					if (remove(ConfigFilesList[i]->FullPath) != 0)
+					{
+						(void)snprintf(msg, 256, "Failed to delete '%s'", ConfigFilesList[i]->Name);
+						ShowMessage("Delete Configuration", msg, "", "", "Ok", "");
+					}
 					txtName->setText("");
 					txtDesc->setText("");
 					last_active_config[0] = '\0';
@@ -116,7 +112,7 @@ public:
 	}
 };
 
-static ConfigButtonActionListener* configButtonActionListener;
+static ConfigActionListener* configActionListener;
 
 static Uint32 last_click_time = 0;
 class ConfigsListActionListener : public gcn::ActionListener
@@ -162,7 +158,7 @@ static ConfigsListActionListener* configsListActionListener;
 
 void InitPanelConfig(const struct config_category& category)
 {
-	configButtonActionListener = new ConfigButtonActionListener();
+	configActionListener = new ConfigActionListener();
 	configsListActionListener = new ConfigsListActionListener();
 
 	lblName = new gcn::Label("Name:");
@@ -171,7 +167,7 @@ void InitPanelConfig(const struct config_category& category)
 	txtName = new gcn::TextField();
 	txtName->setSize(300, TEXTFIELD_HEIGHT);
 	txtName->setBaseColor(gui_base_color);
-	txtName->setBackgroundColor(gui_textbox_background_color);
+	txtName->setBackgroundColor(gui_background_color);
 	txtName->setForegroundColor(gui_foreground_color);
 
 	lblDesc = new gcn::Label("Description:");
@@ -180,7 +176,7 @@ void InitPanelConfig(const struct config_category& category)
 	txtDesc = new gcn::TextField();
 	txtDesc->setSize(300, TEXTFIELD_HEIGHT);
 	txtDesc->setBaseColor(gui_base_color);
-	txtDesc->setBackgroundColor(gui_textbox_background_color);
+	txtDesc->setBackgroundColor(gui_background_color);
 	txtDesc->setForegroundColor(gui_foreground_color);
 
 	cmdLoad = new gcn::Button("Load");
@@ -188,28 +184,28 @@ void InitPanelConfig(const struct config_category& category)
 	cmdLoad->setBaseColor(gui_base_color);
 	cmdLoad->setForegroundColor(gui_foreground_color);
 	cmdLoad->setId("ConfigLoad");
-	cmdLoad->addActionListener(configButtonActionListener);
+	cmdLoad->addActionListener(configActionListener);
 
 	cmdSave = new gcn::Button("Save");
 	cmdSave->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
 	cmdSave->setBaseColor(gui_base_color);
 	cmdSave->setForegroundColor(gui_foreground_color);
 	cmdSave->setId("ConfigSave");
-	cmdSave->addActionListener(configButtonActionListener);
+	cmdSave->addActionListener(configActionListener);
 
 	cmdDelete = new gcn::Button("Delete");
 	cmdDelete->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
 	cmdDelete->setBaseColor(gui_base_color);
 	cmdDelete->setForegroundColor(gui_foreground_color);
 	cmdDelete->setId("CfgDelete");
-	cmdDelete->addActionListener(configButtonActionListener);
+	cmdDelete->addActionListener(configActionListener);
 
 	const int list_width = category.panel->getWidth() - 2 * DISTANCE_BORDER - SCROLLBAR_WIDTH - 2;
 	const int list_height = category.panel->getHeight() - 2 * DISTANCE_BORDER - 2 * lblName->getHeight() - 3 * DISTANCE_NEXT_Y - 2 * BUTTON_HEIGHT;
 	lstConfigs = new gcn::ListBox(&configsList);
 	lstConfigs->setSize(list_width, list_height);
 	lstConfigs->setBaseColor(gui_base_color);
-	lstConfigs->setBackgroundColor(gui_textbox_background_color);
+	lstConfigs->setBackgroundColor(gui_background_color);
 	lstConfigs->setForegroundColor(gui_foreground_color);
 	lstConfigs->setSelectionColor(gui_selection_color);
 	lstConfigs->setWrappingEnabled(true);
@@ -221,7 +217,7 @@ void InitPanelConfig(const struct config_category& category)
 	scrAreaConfigs->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
 	scrAreaConfigs->setSize(lstConfigs->getWidth() + SCROLLBAR_WIDTH, lstConfigs->getHeight() + DISTANCE_NEXT_Y);
 	scrAreaConfigs->setScrollbarWidth(SCROLLBAR_WIDTH);
-	scrAreaConfigs->setBackgroundColor(gui_textbox_background_color);
+	scrAreaConfigs->setBackgroundColor(gui_background_color);
 	scrAreaConfigs->setForegroundColor(gui_foreground_color);
 	scrAreaConfigs->setBaseColor(gui_base_color);
 	scrAreaConfigs->setSelectionColor(gui_selection_color);
@@ -242,12 +238,6 @@ void InitPanelConfig(const struct config_category& category)
 	button_x = category.panel->getWidth() - DISTANCE_BORDER - BUTTON_WIDTH;
 	category.panel->add(cmdDelete, button_x, buttonY);
 
-	if (strlen(last_loaded_config) > 0)
-	{
-		strcpy(last_active_config, last_loaded_config);
-		remove_file_extension(last_active_config);
-	}
-
 	ensureVisible = -1;
 	RefreshPanelConfig();
 }
@@ -262,7 +252,7 @@ void ExitPanelConfig()
 	delete cmdSave;
 	delete cmdDelete;
 
-	delete configButtonActionListener;
+	delete configActionListener;
 
 	delete lblName;
 	delete txtName;
@@ -299,6 +289,7 @@ void RefreshPanelConfig()
 			{
 				// Select current entry
 				lstConfigs->setSelected(i);
+				txtDesc->setText(ConfigFilesList[i]->Description);
 				ensureVisible = i;
 				MakeCurrentVisible();
 				break;
@@ -329,7 +320,7 @@ bool HelpPanelConfig(std::vector<std::string>& helptext)
 	helptext.emplace_back("immediately using that configuration.");
 	helptext.emplace_back(" ");
 	helptext.emplace_back("To create/save a new configuration, set all emulator options as required, then enter");
-	helptext.emplace_back("a new \"Name\", optionally provide a short description, and then click on the \"Save\"");
+	helptext.emplace_back(R"(a new "Name", optionally provide a short description, and then click on the "Save")");
 	helptext.emplace_back("button. When trying to Save a configuration, if the supplied filename already exists,");
 	helptext.emplace_back("it will be automatically renamed to \"configuration.backup\", to keep as a backup.");
 	helptext.emplace_back(" ");
@@ -337,8 +328,8 @@ bool HelpPanelConfig(std::vector<std::string>& helptext)
 	helptext.emplace_back("with floppy disk images and whdload archives. The auto-config logic in Amiberry will");
 	helptext.emplace_back("scan for a configuration file of the same \"Name\" as the disk image or .lha archive");
 	helptext.emplace_back("being loaded. After you load a floppy disk image or whdload archive, and Start the ");
-	helptext.emplace_back("emulation, you can use the \"F12\" key to show the GUI, and in this panel the \"Name\"");
-	helptext.emplace_back("field for the configuartion will be filled correctly. Do not change this, as it will");
+	helptext.emplace_back(R"(emulation, you can use the "F12" key to show the GUI, and in this panel the "Name")");
+	helptext.emplace_back("field for the configuration will be filled correctly. Do not change this, as it will");
 	helptext.emplace_back("stop auto-config from working. You may change the description if you desire.");
 	helptext.emplace_back(" ");
 	helptext.emplace_back("To delete the currently selected configuration file from the disk (and the list),");

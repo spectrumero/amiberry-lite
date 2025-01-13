@@ -20,9 +20,8 @@
 #define GETBDM(x) (((x) - (((x) / 10000) * 10000)) / 100)
 #define GETBDD(x) ((x) % 100)
 
-#define AMIBERRYVERSION _T("Amiberry-Lite v5.7.5 (2024-09-23)")
-#define AMIBERRYDATE MAKEBD(2024, 9, 23)
-#define COPYRIGHT _T("Copyright (C) 2016-2024 Dimitris Panokostas")
+#define AMIBERRYDATE MAKEBD(2025, 1, 8)
+#define COPYRIGHT _T("Copyright (C) 2016-2025 Dimitris Panokostas")
 
 #define IHF_WINDOWHIDDEN 6
 
@@ -41,6 +40,7 @@ extern int mouseactive;
 extern int minimized;
 extern int monitor_off;
 extern bool joystick_refresh_needed;
+extern std::string screenshot_filename;
 
 extern void logging_init();
 
@@ -48,7 +48,7 @@ extern bool my_kbd_handler(int, int, int, bool);
 extern void clearallkeys();
 extern int getcapslock();
 
-extern void releasecapture(struct AmigaMonitor*);
+extern void releasecapture(const struct AmigaMonitor*);
 extern void enablecapture(int monid);
 extern void disablecapture();
 extern void activationtoggle(int monid, bool inactiveonly);
@@ -75,20 +75,20 @@ extern void updatewinrect(struct AmigaMonitor*, bool);
 int getdpiforwindow(SDL_Window* hwnd);
 void amiberry_gui_init();
 void gui_widgets_init();
-void run_gui(void);
+void run_gui();
 void gui_widgets_halt();
 void amiberry_gui_halt();
-void init_max_signals(void);
-void wait_for_vsync(void);
-unsigned long target_lastsynctime(void);
+void init_max_signals();
+void wait_for_vsync();
+unsigned long target_lastsynctime();
 
-void save_amiberry_settings(void);
+void save_amiberry_settings();
 void update_display(struct uae_prefs*);
-void clearscreen(void);
-void graphics_subshutdown(void);
+void clearscreen();
+void graphics_subshutdown();
 
-extern void wait_keyrelease(void);
-extern void keyboard_settrans(void);
+extern void wait_keyrelease();
+extern void keyboard_settrans();
 
 extern void free_AmigaMem();
 extern void alloc_AmigaMem();
@@ -105,6 +105,7 @@ extern void set_nvram_path(const std::string& newpath);
 extern void set_plugins_path(const std::string& newpath);
 extern void set_screenshot_path(const std::string& newpath);
 extern void set_savestate_path(const std::string& newpath);
+extern void set_themes_path(const std::string& newpath);
 extern std::string get_controllers_path();
 extern void set_controllers_path(const std::string& newpath);
 
@@ -122,6 +123,7 @@ extern std::string get_harddrive_path();
 extern void set_harddrive_path(const std::string& newpath);
 extern std::string get_cdrom_path();
 extern void set_cdrom_path(const std::string& newpath);
+extern std::string get_themes_path();
 
 extern bool get_logfile_enabled();
 extern void set_logfile_enabled(bool enabled);
@@ -134,14 +136,14 @@ extern std::string get_screenshot_path();
 
 extern void extract_filename(const char* str, char* buffer);
 extern std::string extract_filename(const std::string& path);
-extern void extract_path(char* str, char* buffer);
+extern void extract_path(const char* str, char* buffer);
 extern std::string extract_path(const std::string& filename);
 extern void remove_file_extension(char* filename);
 extern std::string remove_file_extension(const std::string& filename);
-extern void ReadConfigFileList(void);
-extern void RescanROMs(void);
-extern void SymlinkROMs(void);
-extern void ClearAvailableROMList(void);
+extern void ReadConfigFileList();
+extern void read_rom_list(bool);
+extern int scan_roms(int show);
+extern void SymlinkROMs();
 
 extern bool resumepaused(int priority);
 extern bool setpaused(int priority);
@@ -154,15 +156,6 @@ void init_colors(int monid);
 #include <vector>
 #include <string>
 
-typedef struct
-{
-	std::string Name;
-	std::string Path;
-	int ROMType;
-} AvailableROM;
-
-extern std::vector<AvailableROM*> lstAvailableROMs;
-
 #define MAX_MRU_LIST 40
 
 extern std::vector<std::string> lstMRUDiskList;
@@ -171,10 +164,10 @@ extern std::vector<std::string> lstMRUWhdloadList;
 
 extern void add_file_to_mru_list(std::vector<std::string>& vec, const std::string& file);
 
-int count_HDs(struct uae_prefs* p);
-extern void gui_force_rtarea_hdchange(void);
-extern int isfocus(void);
-extern void gui_restart(void);
+int count_HDs(const struct uae_prefs* p);
+extern void gui_force_rtarea_hdchange();
+extern int isfocus();
+extern void gui_restart();
 extern bool hardfile_testrdb(const char* filename);
 
 extern bool host_poweroff;

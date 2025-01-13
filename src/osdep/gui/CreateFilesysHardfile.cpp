@@ -87,6 +87,7 @@ static void InitCreateFilesysHardfile()
 	wndCreateFilesysHardfile->setForegroundColor(gui_foreground_color);
 	wndCreateFilesysHardfile->setCaption("Create hardfile");
 	wndCreateFilesysHardfile->setTitleBarHeight(TITLEBAR_HEIGHT);
+	wndCreateFilesysHardfile->setMovable(false);
 
 	createFilesysHardfileActionListener = new CreateFilesysHardfileActionListener();
 
@@ -113,12 +114,12 @@ static void InitCreateFilesysHardfile()
 	txtSize = new gcn::TextField();
 	txtSize->setSize(60, TEXTFIELD_HEIGHT);
 	txtSize->setBaseColor(gui_base_color);
-	txtSize->setBackgroundColor(gui_textbox_background_color);
+	txtSize->setBackgroundColor(gui_background_color);
 	txtSize->setForegroundColor(gui_foreground_color);
 
 	chkDynamic = new gcn::CheckBox("Dynamic VHD", true);
 	chkDynamic->setBaseColor(gui_base_color);
-	chkDynamic->setBackgroundColor(gui_textbox_background_color);
+	chkDynamic->setBackgroundColor(gui_background_color);
 	chkDynamic->setForegroundColor(gui_foreground_color);
 	chkDynamic->setId("chkDynamic");
 
@@ -128,7 +129,7 @@ static void InitCreateFilesysHardfile()
 	txtPath->setId("txtCreatePath");
 	txtPath->setSize(500, TEXTFIELD_HEIGHT);
 	txtPath->setBaseColor(gui_base_color);
-	txtPath->setBackgroundColor(gui_textbox_background_color);
+	txtPath->setBackgroundColor(gui_background_color);
 	txtPath->setForegroundColor(gui_foreground_color);
 
 	cmdPath = new gcn::Button("...");
@@ -139,7 +140,6 @@ static void InitCreateFilesysHardfile()
 	cmdPath->addActionListener(createFilesysHardfileActionListener);
 
 	int posY = DISTANCE_BORDER;
-	int posX = DISTANCE_BORDER;
 
 	wndCreateFilesysHardfile->add(lblPath, DISTANCE_BORDER, posY);
 	wndCreateFilesysHardfile->add(txtPath, DISTANCE_BORDER + lblPath->getWidth() + 8, posY);

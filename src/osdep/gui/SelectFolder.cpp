@@ -53,12 +53,12 @@ public:
 		return static_cast<int>(dirs.size());
 	}
 
-	void add(const std::string& elem)
+	void add(const std::string& elem) override
 	{
 		dirs.push_back(elem);
 	}
 
-	void clear()
+	void clear() override
 	{
 		dirs.clear();
 	}
@@ -82,11 +82,11 @@ static SelectDirListModel dirList(".");
 
 static void checkfoldername(const std::string& current)
 {
-	char actualpath [MAX_DPATH];
 	DIR* dir;
 
 	if ((dir = opendir(current.c_str())))
 	{
+		char actualpath [MAX_DPATH];
 		dirList = current;
 		auto* const ptr = realpath(current.c_str(), actualpath);
 		workingDir = std::string(ptr);
@@ -164,6 +164,7 @@ static void InitSelectFolder(const std::string& title)
 	wndSelectFolder->setForegroundColor(gui_foreground_color);
 	wndSelectFolder->setCaption(title);
 	wndSelectFolder->setTitleBarHeight(TITLEBAR_HEIGHT);
+	wndSelectFolder->setMovable(false);
 
 	folderButtonActionListener = new FolderRequesterButtonActionListener();
 
@@ -194,7 +195,7 @@ static void InitSelectFolder(const std::string& title)
 	txtCurrent->setSize(DIALOG_WIDTH - 2 * DISTANCE_BORDER - 4, TEXTFIELD_HEIGHT);
 	txtCurrent->setPosition(DISTANCE_BORDER, 10);
 	txtCurrent->setBaseColor(gui_base_color);
-	txtCurrent->setBackgroundColor(gui_textbox_background_color);
+	txtCurrent->setBackgroundColor(gui_background_color);
 	txtCurrent->setForegroundColor(gui_foreground_color);
 	txtCurrent->setEnabled(true);
 	editDirPathActionListener = new EditDirPathActionListener();
@@ -205,7 +206,7 @@ static void InitSelectFolder(const std::string& title)
 	lstFolders = new gcn::ListBox(&dirList);
 	lstFolders->setSize(DIALOG_WIDTH - 45, DIALOG_HEIGHT - 108);
 	lstFolders->setBaseColor(gui_base_color);
-	lstFolders->setBackgroundColor(gui_textbox_background_color);
+	lstFolders->setBackgroundColor(gui_background_color);
 	lstFolders->setForegroundColor(gui_foreground_color);
 	lstFolders->setSelectionColor(gui_selection_color);
 	lstFolders->setWrappingEnabled(true);
@@ -217,7 +218,7 @@ static void InitSelectFolder(const std::string& title)
 	scrAreaFolders->setSize(DIALOG_WIDTH - 2 * DISTANCE_BORDER - 4, DIALOG_HEIGHT - 128);
 	scrAreaFolders->setScrollbarWidth(SCROLLBAR_WIDTH);
 	scrAreaFolders->setBaseColor(gui_base_color);
-	scrAreaFolders->setBackgroundColor(gui_textbox_background_color);
+	scrAreaFolders->setBackgroundColor(gui_background_color);
 	scrAreaFolders->setForegroundColor(gui_foreground_color);
 	scrAreaFolders->setSelectionColor(gui_selection_color);
 	scrAreaFolders->setHorizontalScrollPolicy(gcn::ScrollArea::ShowAuto);
