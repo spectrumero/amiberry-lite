@@ -3848,18 +3848,18 @@ std::string get_home_directory(const bool portable_mode)
 		write_log("Using home directory from AMIBERRY_HOME_DIR: %s\n", env_home_dir);
 		return { env_home_dir };
 	}
-	// 2: Check $HOME/Amiberry
+	// 2: Check $HOME/Amiberry-Lite
 	if (user_home_dir != nullptr)
 	{
         if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
         {
-            // If $HOME exists, but not the Amiberry subdirectory, create it
+            // If $HOME exists, but not the Amiberry-Lite subdirectory, create it
             my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
         }
-		// $HOME/Amiberry exists, use it
+		// $HOME/Amiberry-Lite exists, use it
 		write_log("Using home directory from $HOME/Amiberry-Lite\n");
         auto result = std::string(user_home_dir);
-		return result.append("/Amiberry");
+		return result.append("/Amiberry-Lite");
 	}
 
 	// 3: Fallback Portable mode, all in startup path
@@ -3903,14 +3903,14 @@ std::string get_config_directory(bool portable_mode)
 		write_log("Using config directory from AMIBERRY_CONFIG_DIR: %s\n", env_conf_dir);
 		return { env_conf_dir };
 	}
-	// 2: Check $HOME/Amiberry/conf
+	// 2: Check $HOME/Amiberry-Lite/conf
 	if (user_home_dir != nullptr)
 	{
         if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
         {
             my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
         }
-		// $HOME/Amiberry exists, use it
+		// $HOME/Amiberry-Lite exists, use it
 		if (!directory_exists(user_home_dir, "/Amiberry-Lite/conf"))
 		{
 			my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite/conf").c_str());
@@ -3918,7 +3918,7 @@ std::string get_config_directory(bool portable_mode)
         // This should be the most used scenario
 		write_log("Using config directory from $HOME/Amiberry-Lite/conf\n");
 		auto result = std::string(user_home_dir);
-		return result.append("/Amiberry/conf");
+		return result.append("/Amiberry-Lite/conf");
 	}
 
 	// 3: Fallback Portable mode, all in startup path
@@ -3930,7 +3930,7 @@ std::string get_config_directory(bool portable_mode)
 #endif
 }
 
-// Plugins that Amiberry can use, usually in the form of shared libraries
+// Plugins that Amiberry-Lite can use, usually in the form of shared libraries
 std::string get_plugins_directory(bool portable_mode)
 {
 #ifdef __MACH__
@@ -3974,21 +3974,21 @@ std::string get_plugins_directory(bool portable_mode)
         write_log("Using plugins directory from " AMIBERRY_LIBDIR "\n");
         return AMIBERRY_LIBDIR;
     }
-	// 3: Check for ~/Amiberry/plugins
+	// 3: Check for ~/Amiberry-Lite/plugins
     const auto user_home_dir = getenv("HOME");
     if (user_home_dir != nullptr)
     {
-        if (!directory_exists(user_home_dir, "/Amiberry"))
+        if (!directory_exists(user_home_dir, "/Amiberry-Lite"))
         {
-            my_mkdir((std::string(user_home_dir) + "/Amiberry").c_str());
+            my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite").c_str());
         }
-        // $HOME/Amiberry exists, use it
-        if (!directory_exists(user_home_dir, "/Amiberry/plugins"))
+        // $HOME/Amiberry-Lite exists, use it
+        if (!directory_exists(user_home_dir, "/Amiberry-Lite/plugins"))
         {
-            my_mkdir((std::string(user_home_dir) + "/Amiberry/plugins").c_str());
+            my_mkdir((std::string(user_home_dir) + "/Amiberry-Lite/plugins").c_str());
         }
-        write_log("Using plugins directory from $HOME/Amiberry/plugins\n");
-        return { std::string(user_home_dir) + "/Amiberry/plugins" };
+        write_log("Using plugins directory from $HOME/Amiberry-Lite/plugins\n");
+        return { std::string(user_home_dir) + "/Amiberry-Lite/plugins" };
     }
 
     // 4: Fallback Portable mode, all in the startup path
@@ -4176,7 +4176,7 @@ static void init_amiberry_dirs(const bool portable_mode)
 		if (!my_existsdir(xdg_config_home.c_str()))
 			my_mkdir(xdg_config_home.c_str());
 
-		// The amiberry.conf file is always in the XDG_CONFIG_HOME/amiberry directory
+		// The amiberry.conf file is always in the XDG_CONFIG_HOME/amiberry-lite directory
 		amiberry_conf_file = xdg_config_home + "/amiberry-lite.conf";
 		amiberry_ini_file = xdg_config_home + "/amiberry-lite.ini";
 		themes_path = xdg_config_home;
@@ -4199,7 +4199,7 @@ static void init_amiberry_dirs(const bool portable_mode)
     floppy_path.append("/Floppies/");
     harddrive_path.append("/Harddrives/");
     cdrom_path.append("/CDROMs/");
-    logfile_path.append("/Amiberry.log");
+    logfile_path.append("/Amiberry-Lite.log");
     rom_path.append("/Roms/");
     rp9_path.append("/RP9/");
     saveimage_dir.append("/");

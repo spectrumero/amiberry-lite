@@ -374,7 +374,7 @@ static bool SDL2_alloctexture(int monid, int w, int h, const int depth)
 			int width, height;
 			Uint32 format;
 			SDL_QueryTexture(amiga_texture, &format, nullptr, &width, &height);
-			if (width == -w && height == -h && (depth == 16 && format == SDL_PIXELFORMAT_RGB565) || (depth == 32 && format == SDL_PIXELFORMAT_BGRA32))
+			if (width == -w && height == -h && (depth == 16 && format == SDL_PIXELFORMAT_RGB565) || (depth == 32 && format == SDL_PIXELFORMAT_RGBA32))
 			{
 				set_scaling_option(&currprefs, width, height);
 				return true;
@@ -387,7 +387,7 @@ static bool SDL2_alloctexture(int monid, int w, int h, const int depth)
 		SDL_DestroyTexture(amiga_texture);
 
 	AmigaMonitor* mon = &AMonitors[0];
-	amiga_texture = SDL_CreateTexture(mon->amiga_renderer, depth == 16 ? SDL_PIXELFORMAT_RGB565 : SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, w, h);
+	amiga_texture = SDL_CreateTexture(mon->amiga_renderer, depth == 16 ? SDL_PIXELFORMAT_RGB565 : SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, w, h);
 	return amiga_texture != nullptr;
 #endif
 }
