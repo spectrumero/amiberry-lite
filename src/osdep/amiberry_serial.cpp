@@ -53,6 +53,7 @@
 #define SERIAL_BREAK_DELAY (20 * maxvpos)
 #define SERIAL_BREAK_TRANSMIT_DELAY 4
 
+
 #define SERIAL_MAP
 
 #ifdef SERIAL_MAP
@@ -336,11 +337,8 @@ static int opentcp (const TCHAR *sername)
 
 int openser (const TCHAR *sername)
 {
-	if (!_tcsnicmp(sername, _T("TCP://"), 6)) {
-		return opentcp(sername + 6);
-	}
 	if (!_tcsnicmp(sername, _T("TCP:"), 4)) {
-		return opentcp(sername + 4);
+		return opentcp(sername);
 	}
 
 	if (sp_get_port_by_name(sername, &port) != SP_OK) {
