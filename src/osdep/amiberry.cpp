@@ -1867,7 +1867,8 @@ bool handle_events()
 		was_paused = 0;
 	}
 	// Insert a 10ms delay to prevent 100% CPU usage
-	SDL_Delay(10);
+	if (pause_emulation)
+		SDL_Delay(10);
 	return pause_emulation != 0;
 }
 
