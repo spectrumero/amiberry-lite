@@ -476,11 +476,6 @@ static int scan_rom(const std::string& path, UAEREG* fkey, bool deepscan)
 	return rsd.got;
 }
 
-void SymlinkROMs()
-{
-	symlink_roms(&changed_prefs);
-}
-
 static int listrom(const int* roms)
 {
 	int i;
@@ -1375,7 +1370,6 @@ void CreateDefaultDevicename(char* name)
 	}
 }
 
-
 int tweakbootpri(int bp, int ab, int dnm)
 {
 	if (dnm)
@@ -1598,6 +1592,9 @@ void new_cddrive(int entry)
 	ci.device_emu_unit = 0;
 	ci.controller_type = current_cddlg.ci.controller_type;
 	ci.controller_unit = current_cddlg.ci.controller_unit;
+#ifdef AMIBERRY
+	_tcscpy(ci.rootdir, current_cddlg.ci.rootdir);
+#endif
 	ci.type = UAEDEV_CD;
 	ci.readonly = true;
 	ci.blocksize = 2048;

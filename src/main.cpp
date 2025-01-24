@@ -1531,7 +1531,7 @@ static int real_main2 (int argc, TCHAR **argv)
 #ifdef NATMEM_OFFSET
 	if (!init_shm ()) {
 		if (currprefs.start_gui)
-			uae_restart(&currprefs, -1, NULL);
+			uae_restart(&currprefs, -1, nullptr);
 		return 0;
 	}
 #endif
