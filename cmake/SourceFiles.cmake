@@ -208,6 +208,7 @@ set(SOURCE_FILES
         src/osdep/amiberry_serial.cpp
         src/osdep/amiberry_uaenet.cpp
         src/osdep/amiberry_whdbooter.cpp
+
         src/osdep/ioport.cpp
         src/osdep/sigsegv_handler.cpp
         src/osdep/socket.cpp
@@ -226,6 +227,7 @@ set(SOURCE_FILES
         src/osdep/gui/SelectFolder.cpp
         src/osdep/gui/SelectFile.cpp
         src/osdep/gui/CreateFilesysHardfile.cpp
+        src/osdep/gui/EditCDDrive.cpp
         src/osdep/gui/EditFilesysVirtual.cpp
         src/osdep/gui/EditFilesysHardfile.cpp
         src/osdep/gui/EditFilesysHardDrive.cpp

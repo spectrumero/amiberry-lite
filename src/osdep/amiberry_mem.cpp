@@ -61,8 +61,8 @@ void free_AmigaMem(void)
 
 bool can_have_1gb()
 {
-	#ifndef __MACH__
-	struct sysinfo mem_info{};
+#ifndef __MACH__
+	struct sysinfo mem_info {};
 	sysinfo(&mem_info);
 	long long total_phys_mem = mem_info.totalram;
 	total_phys_mem *= mem_info.mem_unit;
@@ -70,10 +70,10 @@ bool can_have_1gb()
 	if (total_phys_mem > 2147483648LL)
 		return true;
 	return false;
-	#else
+#else
 	// On OSX just return true, there's no M1 mac with less than 8G of RAM
 	return true;
-	#endif
+#endif
 }
 
 void alloc_AmigaMem(void)
