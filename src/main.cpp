@@ -76,7 +76,7 @@
 #include "fsdb_host.h"
 #include "keyboard.h"
 
-static const char __ver[40] = "$VER: Amiberry-Lite 5.8.1 (2025-01-16)";
+static const char __ver[40] = "$VER: Amiberry-Lite 5.8.2 (2025-01-24)";
 long int version = 256 * 65536L * UAEMAJOR + 65536L * UAEMINOR + UAESUBREV;
 
 extern int console_logging;
