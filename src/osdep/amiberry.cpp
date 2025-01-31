@@ -155,8 +155,8 @@ std::string get_version_string()
 {
 	const auto pre_release_string = std::string(AMIBERRY_VERSION_PRE_RELEASE);
 	if (pre_release_string.empty())
-		return "Amiberry " + std::string(AMIBERRY_VERSION);
-	return "Amiberry " + std::string(AMIBERRY_VERSION) + "-" + std::string(AMIBERRY_VERSION_PRE_RELEASE);
+		return "Amiberry-Lite " + std::string(AMIBERRY_VERSION);
+	return "Amiberry-Lite " + std::string(AMIBERRY_VERSION) + "-" + std::string(AMIBERRY_VERSION_PRE_RELEASE);
 }
 
 std::string get_copyright_notice()
@@ -4320,9 +4320,9 @@ static bool locate_amiberry_conf(const bool portable_mode)
 	else
 	{
 #ifdef __MACH__
-		const std::string amiberry_dir = "Amiberry";
+		const std::string amiberry_dir = "Amiberry-Lite";
 #else
-		const std::string amiberry_dir = "amiberry";
+		const std::string amiberry_dir = "amiberry-lite";
 #endif
 		std::string xdg_config_home = get_xdg_config_home();
 		if (!my_existsdir(xdg_config_home.c_str()))
