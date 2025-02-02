@@ -77,7 +77,7 @@
 #include "keyboard.h"
 
 // Special version string so that AmigaOS can detect it
-static constexpr char __ver[40] = "$VER: Amiberry-Lite 5.8.2 (2025-01-29)";
+static constexpr char __ver[40] = "$VER: Amiberry-Lite 5.8.3 (2025-02-02)";
 
 long int version = 256 * 65536L * UAEMAJOR + 65536L * UAEMINOR + UAESUBREV;
 
