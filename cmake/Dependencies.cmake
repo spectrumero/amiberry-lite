@@ -36,7 +36,7 @@ endif ()
 
 if (USE_PORTMIDI)
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_PORTMIDI)
-    find_helper(PORTTIME porttime porttime.h porttime)
+    find_helper(PORTMIDI portmidi portmidi.h portmidi)
 endif ()
 
 if (USE_LIBMPEG2)
