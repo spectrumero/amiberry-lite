@@ -280,6 +280,7 @@ static BOOL tcpserial;
 
 static bool tcp_is_connected ()
 {
+#ifdef SERIAL_ENET
 	if (serialsocket == UAE_SOCKET_INVALID) {
 		return false;
 	}
@@ -294,20 +295,26 @@ static bool tcp_is_connected ()
 		}
 	}
 	return serialconn != UAE_SOCKET_INVALID;
+#else
+	return false;
+#endif
 }
 
 static void tcp_disconnect ()
 {
+#ifdef SERIAL_ENET
 	if (serialconn == UAE_SOCKET_INVALID) {
 		return;
 	}
 	uae_socket_close(serialconn);
 	serialconn = UAE_SOCKET_INVALID;
 	write_log(_T("TCP: Serial disconnect\n"));
+#endif
 }
 
 static void closetcp ()
 {
+#ifdef SERIAL_ENET
 	if (serialconn != UAE_SOCKET_INVALID) {
 		uae_socket_close(serialconn);
 		serialconn = UAE_SOCKET_INVALID;
@@ -317,10 +324,12 @@ static void closetcp ()
 		serialsocket = UAE_SOCKET_INVALID;
 	}
 	// WSACleanup ();
+#endif
 }
 
 static int opentcp (const TCHAR *sername)
 {
+#ifdef SERIAL_ENET
 	serialsocket = uae_tcp_listen_uri(sername, "1234", UAE_SOCKET_DEFAULT);
 	if (serialsocket == UAE_SOCKET_INVALID) {
 		return 0;
@@ -333,6 +342,9 @@ static int opentcp (const TCHAR *sername)
 	}
 	tcpserial = TRUE;
 	return 1;
+#else
+	return 0;
+#endif
 }
 
 int openser (const TCHAR *sername)

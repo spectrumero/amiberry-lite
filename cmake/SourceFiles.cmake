@@ -87,7 +87,6 @@ set(SOURCE_FILES
         src/uaenative.cpp
         src/uaeresource.cpp
         src/uaeserial.cpp
-        src/vm.cpp
         src/zfile.cpp
         src/zfile_archive.cpp
         src/archivers/7z/7zAlloc.c

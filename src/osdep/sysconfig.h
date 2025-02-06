@@ -45,8 +45,13 @@
 #define CDTV /* CDTV emulation */
 #define PARALLEL_PORT /* parallel port emulation */
 //#define PARALLEL_DIRECT /* direct parallel port emulation */
-#define SERIAL_PORT  /* serial port emulation */
-#define SERIAL_ENET /* serial port UDP transport */
+
+// We define this externally in Amiberry
+//#define SERIAL_PORT  /* serial port emulation */
+
+// We define this externally in Amiberry
+//#define SERIAL_ENET /* serial port UDP transport */
+
 #define SCSIEMU /* uaescsi.device emulation */
 #define UAESERIAL /* uaeserial.device emulation */
 #define FPUEMU /* FPU emulation */
@@ -107,8 +112,9 @@
 //#define WITH_DSP
 //#define WITH_DRACO
 
+// We define this externally in Amiberry
 // Use portmidi library for MIDI devices
-#define WITH_MIDI
+//#define WITH_MIDI
 
 /* vpar virtual parallel port */
 #define WITH_VPAR 1
