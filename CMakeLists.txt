@@ -50,7 +50,7 @@ set(PROJECT_COMPANY_NAMESPACE "com.blitterstudio")  # Reverse domain name notati
 include(GNUInstallDirs)
 
 include(cmake/StandardProjectSettings.cmake)
-include(cmake/Dependencies.cmake)
 include(cmake/SourceFiles.cmake)
+include(cmake/Dependencies.cmake)
 
 add_subdirectory(packaging)
