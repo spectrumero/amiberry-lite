@@ -87,7 +87,6 @@ set(SOURCE_FILES
         src/uaenative.cpp
         src/uaeresource.cpp
         src/uaeserial.cpp
-        src/vm.cpp
         src/zfile.cpp
         src/zfile_archive.cpp
         src/archivers/7z/7zAlloc.c
@@ -333,32 +332,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
         external/mt32emu/src
         external/floppybridge/src
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE
-        SDL2
-        SDL2_image
-        SDL2_ttf
-        guisan
-        mt32emu
-        ${DBUS_LIBRARIES}
-        FLAC
-        ${PORTMIDI_LIBRARIES}
-        png
-        MPG123::libmpg123
-        ${LIBMPEG2_LIBRARIES}
-        ${LIBMPEG2_CONVERT_LIBRARIES}
-        ${LIBSERIALPORT_LIBRARIES}
-        ${LIBENET_LIBRARIES}
-        z
-        pthread
-        dl
-)
-
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_link_libraries(${PROJECT_NAME} PRIVATE rt)
-endif ()
-
-# Add dependencies to ensure external libraries are built
-add_dependencies(${PROJECT_NAME} mt32emu floppybridge capsimage guisan)
 
 # Install the executable
 install(TARGETS ${PROJECT_NAME}

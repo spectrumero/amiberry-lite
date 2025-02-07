@@ -14,6 +14,15 @@ option(USE_OPENGL "Use OpenGL" OFF)
 # Enable Link Time Optimization?
 option(WITH_LTO "Enable Link Time Optimization" OFF)
 
+# Use LibSerialPort for serial port emulation?
+option(USE_LIBSERIALPORT "Use LibSerialPort" ON)
+# Use LibENET for network emulation?
+option(USE_LIBENET "Use LibENET" ON)
+# Use PortMidi for MIDI emulation?
+option(USE_PORTMIDI "Use PortMidi" ON)
+# Use LibMPEG2 for MPEG2 decoding (CD32 FMV)?
+option(USE_LIBMPEG2 "Use LibMPEG2" ON)
+
 ## Determine proper semantic version
 set(VERSION_MAJOR "5")
 set(VERSION_MINOR "8")
@@ -31,6 +40,9 @@ project(amiberry-lite
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(PROJECT_NAME "Amiberry-Lite")
     set(CMAKE_PROJECT_NAME "Amiberry-Lite")
+else ()
+    set(PROJECT_NAME "amiberry-lite")
+    set(CMAKE_PROJECT_NAME "amiberry-lite")
 endif ()
 set(PROJECT_COMPANY_NAME "BlitterStudio")
 set(PROJECT_COMPANY_NAMESPACE "com.blitterstudio")  # Reverse domain name notation
@@ -38,7 +50,7 @@ set(PROJECT_COMPANY_NAMESPACE "com.blitterstudio")  # Reverse domain name notati
 include(GNUInstallDirs)
 
 include(cmake/StandardProjectSettings.cmake)
-include(cmake/Dependencies.cmake)
 include(cmake/SourceFiles.cmake)
+include(cmake/Dependencies.cmake)
 
 add_subdirectory(packaging)
