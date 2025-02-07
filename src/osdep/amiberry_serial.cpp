@@ -1194,6 +1194,7 @@ void serial_hsynchandler ()
 
 void setserstat(int mask, int onoff)
 {
+#ifdef USE_LIBSERIALPORT
 	if (mask & SP_FLOWCONTROL_DTRDSR)
 	{
 		if (currprefs.use_serial && port != nullptr)
@@ -1213,6 +1214,7 @@ void setserstat(int mask, int onoff)
 			}
 		}
 	}
+#endif
 }
 
 int setbaud(int baud, int org_baud)
@@ -1248,10 +1250,12 @@ int setbaud(int baud, int org_baud)
 #endif
 	if (!currprefs.use_serial)
 		return 1;
+#ifdef USE_LIBSERIALPORT
 	if (port != nullptr)
 	{
 		check(sp_set_baudrate(port, baud));
 	}
+#endif
 	return 1;
 }
 
@@ -1549,9 +1553,11 @@ uae_u8 serial_readstatus(uae_u8 v, uae_u8 dir)
 #endif
 	} else if (currprefs.use_serial) {
 #ifdef SERIAL_PORT
+#ifdef USE_LIBSERIALPORT
 		/* Read the current config from the port into that configuration. */
 		if (port != nullptr)
 			check(sp_get_signals(port, &signal));
+#endif
 #endif
 	}
 	else {
@@ -1846,6 +1852,7 @@ void serial_uartbreak (int v)
 	if (!port || !currprefs.use_serial)
 		return;
 #ifdef SERIAL_PORT
+#ifdef USE_LIBSERIALPORT
 	if (v)
 	{
 		check(sp_start_break(port));
@@ -1854,6 +1861,7 @@ void serial_uartbreak (int v)
 	{
 		check(sp_end_break(port));
 	}
+#endif
 #endif
 }
 
