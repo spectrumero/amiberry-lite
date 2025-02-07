@@ -263,9 +263,10 @@ static void SDL2_init()
 	{
 		write_log("Creating Amiberry window...\n");
 		Uint32 mode;
+
+		// Only enable Windowed mode if we're running under x11
 		if (!kmsdrm_detected)
 		{
-			// Only enable Windowed mode if we're running under x11
 			if (currprefs.gfx_apmode[APMODE_NATIVE].gfx_fullscreen == GFX_FULLWINDOW)
 				mode = SDL_WINDOW_FULLSCREEN_DESKTOP;
 			else if (currprefs.gfx_apmode[APMODE_NATIVE].gfx_fullscreen == GFX_FULLSCREEN)
