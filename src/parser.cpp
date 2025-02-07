@@ -9,6 +9,9 @@
 
 #include "sysconfig.h"
 
+#include <cstring>
+#include <cstdio>
+
 #undef SERIAL_ENET
 
 #include "config.h"
@@ -51,6 +54,10 @@
 #endif
 
 #include "uae/socket.h"
+
+#ifdef USE_LIBSERIALPORT
+#include <libserialport.h>
+#endif
 
 #if !defined B300 || !defined B1200 || !defined B2400 || !defined B4800 || !defined B9600
 #undef POSIX_SERIAL
@@ -269,10 +276,6 @@ int uaeser_break(void* vsd, int brklen) {
 	return 0;
 #endif
 }
-
-#include <libserialport.h>
-#include <cstring>
-#include <cstdio>
 
 int uaeser_setparams(void* vsd, int baud, int rbuffer, int bits, int sbits, int rtscts, int parity, uae_u32 xonxoff)
 {
