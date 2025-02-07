@@ -42,7 +42,9 @@
 #include "midiemu.h"
 #endif
 
+#ifdef USE_LIBSERIALPORT
 #include <libserialport.h>
+#endif
 #include <netinet/tcp.h>
 #include <sys/mman.h>
 
@@ -208,9 +210,11 @@ bool shmem_serial_create()
 
 #endif
 
+#ifdef USE_LIBSERIALPORT
 /* A pointer to a struct sp_port, which will refer to
  * the port found. */
 sp_port* port;
+#endif
 
 static int data_in_serdat; /* new data written to SERDAT */
 static evt_t data_in_serdat_delay;
@@ -349,6 +353,7 @@ static int opentcp (const TCHAR *sername)
 
 int openser (const TCHAR *sername)
 {
+#ifdef USE_LIBSERIALPORT
 	if (!_tcsnicmp(sername, _T("TCP:"), 4)) {
 		return opentcp(sername);
 	}
@@ -370,7 +375,7 @@ int openser (const TCHAR *sername)
 	sp_set_parity(port, SP_PARITY_NONE);
 	sp_set_stopbits(port, 1);
 	sp_set_flowcontrol(port, SP_FLOWCONTROL_NONE);
-
+#endif
 	return 1;
 }
 
@@ -395,11 +400,13 @@ void closeser ()
 		midi_emu_close();
 	}
 #endif
+#ifdef USE_LIBSERIALPORT
 	if (port != nullptr) {
 		sp_close(port);
 		sp_free_port(port);
 		port = nullptr;
 	}
+#endif
 }
 
 static void serial_rx_irq()
@@ -526,6 +533,7 @@ int readser(int* buffer)
 		}
 		dataininput = 0;
 		dataininputcnt = 0;
+#ifdef USE_LIBSERIALPORT
 		if (port != nullptr) {
 			int bytes_available = sp_input_waiting(port);
 			if (bytes_available < 0) {
@@ -551,12 +559,14 @@ int readser(int* buffer)
 				return readser(buffer);
 			}
 		}
+#endif
 		return 0;
 	}
 }
 
 void flushser()
 {
+#ifdef USE_LIBSERIALPORT
 	if (port) {
 		sp_flush(port, SP_BUF_INPUT);
 	}
@@ -567,6 +577,7 @@ void flushser()
 				break;
 		}
 	}
+#endif
 }
 
 int readseravail(bool* breakcond)
@@ -594,6 +605,7 @@ int readseravail(bool* breakcond)
 			return 0;
 		if (dataininput > dataininputcnt)
 			return 1;
+#ifdef USE_LIBSERIALPORT
 		if (port) {
 			if (breakcond && breakpending) {
 				*breakcond = true;
@@ -606,6 +618,7 @@ int readseravail(bool* breakcond)
 			}
 			return bytes_available;
 		}
+#endif
 	}
 	return 0;
 }
@@ -807,7 +820,7 @@ static void outser()
 {
 	if (datainoutput <= 0)
 		return;
-
+#ifdef USE_LIBSERIALPORT
 	memcpy(outputbufferout, outputbuffer, datainoutput);
 	int bytes_written = sp_blocking_write(port, outputbufferout, datainoutput, 1000);
 	if (bytes_written < 0) {
@@ -816,7 +829,7 @@ static void outser()
 	else if (bytes_written != datainoutput) {
 		write_log("Only wrote %d of %d bytes!\n", bytes_written, datainoutput);
 	}
-
+#endif
 	datainoutput = 0;
 }
 
@@ -845,6 +858,7 @@ void writeser(int c)
 		midi_send_byte(static_cast<uint8_t>(c));
 #endif
 	} else {
+#ifdef USE_LIBSERIALPORT
 		if (!port || !currprefs.use_serial)
 			return;
 		if (datainoutput + 1 < sizeof(outputbuffer)) {
@@ -854,13 +868,16 @@ void writeser(int c)
 			datainoutput = 0;
 		}
 		outser();
+#endif
 	}
 }
 
 int checkserwrite(int spaceneeded)
 {
+#ifdef USE_LIBSERIALPORT
 	if (!port || !currprefs.use_serial)
 		return 1;
+#endif
 #ifdef WITH_MIDI
 	if (midi_ready) {
 		return 1;
@@ -1473,7 +1490,9 @@ void serial_dtr_on()
 #ifdef SERIAL_PORT
 	if (currprefs.serial_demand)
 		serial_open();
+#ifdef USE_LIBSERIALPORT
 	setserstat(SP_FLOWCONTROL_DTRDSR, dtr);
+#endif
 #endif
 }
 
@@ -1491,7 +1510,9 @@ void serial_dtr_off()
 #ifdef SERIAL_PORT
 	if (currprefs.serial_demand)
 		serial_close();
+#ifdef USE_LIBSERIALPORT
 	setserstat(SP_FLOWCONTROL_DTRDSR, dtr);
+#endif
 #endif
 }
 
@@ -1512,6 +1533,7 @@ static void serial_status_debug(const TCHAR* s)
 
 uae_u8 serial_readstatus(uae_u8 v, uae_u8 dir)
 {
+#ifdef USE_LIBSERIALPORT
 	sp_signal signal;
 	uae_u8 serbits = oldserbits;
 
@@ -1553,11 +1575,9 @@ uae_u8 serial_readstatus(uae_u8 v, uae_u8 dir)
 #endif
 	} else if (currprefs.use_serial) {
 #ifdef SERIAL_PORT
-#ifdef USE_LIBSERIALPORT
 		/* Read the current config from the port into that configuration. */
 		if (port != nullptr)
 			check(sp_get_signals(port, &signal));
-#endif
 #endif
 	}
 	else {
@@ -1642,6 +1662,9 @@ uae_u8 serial_readstatus(uae_u8 v, uae_u8 dir)
 
 	v = (v & (0x80 | 0x40 | 0x02 | 0x01)) | serbits;
 	return v;
+#else
+	return 0;
+#endif
 }
 
 uae_u8 serial_writestatus(uae_u8 newstate, uae_u8 dir)
@@ -1658,6 +1681,7 @@ uae_u8 serial_writestatus(uae_u8 newstate, uae_u8 dir)
 			else
 				serial_dtr_on();
 		}
+#ifdef USE_LIBSERIALPORT
 		if (!currprefs.serial_hwctsrts && currprefs.serial_rtsctsdtrdtecd && (dir & 0x40)) {
 			if ((oldserbits ^ newstate) & 0x40) {
 				if (newstate & 0x40) {
@@ -1673,6 +1697,7 @@ uae_u8 serial_writestatus(uae_u8 newstate, uae_u8 dir)
 				}
 			}
 		}
+#endif
 	}
 
 	if (logcnt > 0) {
@@ -1849,8 +1874,10 @@ void serial_uartbreak (int v)
 		shmem_serial_send(0x40000000 | (v ? 0x20000 : 0x10000));
 	}
 #endif
+#ifdef USE_LIBSERIALPORT
 	if (!port || !currprefs.use_serial)
 		return;
+#endif
 #ifdef SERIAL_PORT
 #ifdef USE_LIBSERIALPORT
 	if (v)
@@ -1865,6 +1892,7 @@ void serial_uartbreak (int v)
 #endif
 }
 
+#ifdef USE_LIBSERIALPORT
 /* Helper function for error handling. */
 int check(const sp_return result)
 {
@@ -1890,6 +1918,7 @@ int check(const sp_return result)
 		return result;
 	}
 }
+#endif
 
 #ifdef SERIAL_ENET
 static ENetHost* enethost, * enetclient;
