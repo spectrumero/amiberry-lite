@@ -279,6 +279,7 @@ int uaeser_break(void* vsd, int brklen) {
 
 int uaeser_setparams(void* vsd, int baud, int rbuffer, int bits, int sbits, int rtscts, int parity, uae_u32 xonxoff)
 {
+#ifdef USE_LIBSERIALPORT
 	struct sp_port* port = static_cast<struct sp_port*>(vsd);
 	struct sp_port_config* config;
 	sp_return result;
@@ -370,13 +371,16 @@ int uaeser_setparams(void* vsd, int baud, int rbuffer, int bits, int sbits, int 
 	}
 
 	sp_free_config(config);
+#endif
 	return 0;
 }
 
 static void startwce(struct uaeserialdata* sd, struct sp_event_set* evtset)
 {
+#ifdef USE_LIBSERIALPORT
 	uae_sem_post(&sd->evtwce);
 	sp_wait(evtset, 0);
+#endif
 }
 
 static int uaeser_trap_thread (void *arg)
@@ -664,6 +668,7 @@ void hsyncstuff (void)
 
 int enumserialports (void)
 {
+#ifdef USE_LIBSERIALPORT
 	int cnt = 0;
 	/* A pointer to a null-terminated array of pointers to
 	* struct sp_port, which will contain the serial ports found.*/
@@ -703,6 +708,9 @@ int enumserialports (void)
 	cnt++;
 	write_log(_T("Port enumeration end\n"));
 	return cnt;
+#else
+	return 0;
+#endif
 }
 
 int enummidiports (void)
