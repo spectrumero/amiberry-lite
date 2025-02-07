@@ -43,7 +43,6 @@
 #endif
 #include <csignal>
 #include <dlfcn.h>
-#include <execinfo.h>
 #include <SDL.h>
 
 #ifdef JIT
