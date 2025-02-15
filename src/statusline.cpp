@@ -287,8 +287,7 @@ void draw_status_line_single(int monid, uae_u8 *buf, int bpp, int y, int totalwi
 					if (fps > 999) {
 						fps += 50;
 						fps /= 10;
-						if (fps > 999)
-							fps = 999;
+						fps = std::min(fps, 999);
 						num1 = fps / 100;
 						num1 %= 10;
 						num2 = 18;
@@ -343,8 +342,7 @@ void draw_status_line_single(int monid, uae_u8 *buf, int bpp, int y, int totalwi
 			}
 		} else if (led == LED_SND && gui_data.sndbuf_avail) {
 			int snd = abs(gui_data.sndbuf + 5) / 10;
-			if (snd > 99)
-				snd = 99;
+			snd = std::min(snd, 99);
 			pos = 0;
 			on = gui_data.sndbuf_status;
 			if (on < 3) {
@@ -508,9 +506,10 @@ void statusline_clear(void)
 {
 	statusline_text_active = NULL;
 	statusline_delay = 0;
-	for (int i = 0; i < MAX_STATUSLINE_QUEUE; i++) {
-		xfree(statusline_data[i].text);
-		statusline_data[i].text = NULL;
+	for (auto& i : statusline_data)
+	{
+		xfree(i.text);
+		i.text = NULL;
 	}
 	statusline_update_notification();
 }
