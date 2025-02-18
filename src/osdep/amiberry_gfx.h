@@ -122,7 +122,7 @@ extern SDL_Rect crop_rect;
 
 extern SDL_Surface* amiga_surface;
 extern const char* sdl_video_driver;
-extern SDL_Rect renderQuad;
+extern SDL_Rect render_quad;
 extern SDL_Cursor* normalcursor;
 
 extern void sortdisplays();

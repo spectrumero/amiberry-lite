@@ -61,8 +61,6 @@
 
 #ifdef AMIBERRY
 static bool force_auto_crop = false;
-
-/* SDL Surface for output of emulation */
 SDL_DisplayMode sdl_mode;
 SDL_Surface* amiga_surface = nullptr;
 
@@ -75,7 +73,7 @@ crtemu_t* crtemu_tv = nullptr;
 SDL_Texture* amiga_texture;
 #endif
 
-SDL_Rect renderQuad;
+SDL_Rect render_quad;
 static int dx = 0, dy = 0;
 SDL_Rect crop_rect;
 const char* sdl_video_driver;
@@ -115,11 +113,11 @@ static bool screen_cs_allocated;
  * address changes */
 static void* old_pixels;
 
-void gfx_lock(void)
+void gfx_lock()
 {
 	SDL_LockMutex(screen_cs);
 }
-void gfx_unlock(void)
+void gfx_unlock()
 {
 	SDL_UnlockMutex(screen_cs);
 }
@@ -147,7 +145,7 @@ void GetWindowRect(SDL_Window* window, SDL_Rect* rect)
 
 // Check if the requested Amiga resolution can be displayed with the current Screen mode as a direct multiple
 // Based on this we make the decision to use Linear (smooth) or Nearest Neighbor (pixelated) scaling
-bool isModeAspectRatioExact(const SDL_DisplayMode* mode, const int width, const int height)
+bool ar_is_exact(const SDL_DisplayMode* mode, const int width, const int height)
 {
 	return mode->w % width == 0 && mode->h % height == 0;
 }
@@ -162,7 +160,7 @@ void set_scaling_option(const uae_prefs* p, const int width, const int height)
 {
 	if (p->scaling_method == -1)
 	{
-		if (isModeAspectRatioExact(&sdl_mode, width, height))
+		if (ar_is_exact(&sdl_mode, width, height))
 		{
 #ifdef USE_OPENGL
 			glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -434,7 +432,48 @@ bool vkbd_allowed(const int monid)
 	return currprefs.vkbd_enabled && !mon->screen_is_picasso;
 }
 
+static bool SDL2_renderframe(const int monid, int mode, int immediate)
+{
+	const AmigaMonitor* mon = &AMonitors[monid];
+	const amigadisplay* ad = &adisplays[monid];
+	// RTG status line is handled in P96 code, this is for native modes only
+	if ((currprefs.leds_on_screen & STATUSLINE_CHIPSET) && !ad->picasso_on)
+	{
+		update_leds(monid);
+	}
+
+	if (amiga_texture && amiga_surface)
+	{
+		SDL_RenderClear(mon->amiga_renderer);
+		SDL_UpdateTexture(amiga_texture, nullptr, amiga_surface->pixels, amiga_surface->pitch);
+		SDL_RenderCopyEx(mon->amiga_renderer, amiga_texture, &crop_rect, &render_quad, amiberry_options.rotation_angle, nullptr, SDL_FLIP_NONE);
+		if (vkbd_allowed(monid))
+		{
+			vkbd_redraw();
+		}
+		return true;
+	}
+	return false;
+}
+
+static void SDL2_showframe(const int monid)
+{
+	const AmigaMonitor* mon = &AMonitors[monid];
+	SDL_RenderPresent(mon->amiga_renderer);
+}
+
+static void SDL2_refresh(const int monid)
+{
+	SDL2_renderframe(monid, 1, 1);
+	SDL2_showframe(monid);
+}
+
 #endif //AMIBERRY
+
+int gfx_IsPicassoScreen(const struct AmigaMonitor* mon)
+{
+	return mon->screen_is_picasso ? 1 : 0;
+}
 
 static int isfullscreen_2(struct uae_prefs* p)
 {
@@ -445,6 +484,23 @@ static int isfullscreen_2(struct uae_prefs* p)
 int isfullscreen()
 {
 	return isfullscreen_2(&currprefs);
+}
+
+int gfx_GetDepth(const struct AmigaMonitor* mon, const int real)
+{
+	if (!mon->currentmode.native_depth)
+		return mon->currentmode.current_depth;
+	return real ? mon->currentmode.native_depth : mon->currentmode.current_depth;
+}
+
+int gfx_GetWidth(const struct AmigaMonitor* mon)
+{
+	return mon->currentmode.current_width;
+}
+
+int gfx_GetHeight(const struct AmigaMonitor* mon)
+{
+	return mon->currentmode.current_height;
 }
 
 int default_freq = 60;
@@ -577,17 +633,17 @@ static bool get_display_vblank_params(int displayindex, int* activeheightp, int*
 	SDL_Rect usable_bounds;
 	SDL_Rect bounds;
 
-	if (SDL_GetDesktopDisplayMode(0, &dm) != 0)
+	if (SDL_GetDesktopDisplayMode(displayindex, &dm) != 0)
 	{
 		write_log("SDL_GetDesktopDisplayMode failed: %s\n", SDL_GetError());
 		return ret;
 	}
-	if (SDL_GetDisplayUsableBounds(0, &usable_bounds) != 0)
+	if (SDL_GetDisplayUsableBounds(displayindex, &usable_bounds) != 0)
 	{
 		write_log("SDL_GetDisplayUsableBounds failed: %s\n", SDL_GetError());
 		return ret;
 	}
-	if (SDL_GetDisplayBounds(0, &bounds) != 0)
+	if (SDL_GetDisplayBounds(displayindex, &bounds) != 0)
 	{
 		write_log("SDL_GetDisplayBounds failed: %s\n", SDL_GetError());
 		return ret;
@@ -597,8 +653,8 @@ static bool get_display_vblank_params(int displayindex, int* activeheightp, int*
 		*activeheightp = usable_bounds.h;
 	if (totalheightp)
 		*totalheightp = bounds.h;
-	auto vblank = (float)dm.refresh_rate;
-	auto hblank = (float)31000; // faking hblank, since SDL2 doesn't provide a way to get the real one
+	auto vblank = static_cast<float>(dm.refresh_rate);
+	auto hblank = static_cast<float>(31000); // faking hblank, since SDL2 doesn't provide a way to get the real one
 	if (vblankp)
 		*vblankp = vblank;
 	if (hblankp)
@@ -651,8 +707,8 @@ void getgfxoffset(int monid, float* dxp, float* dyp, float* mxp, float* myp)
 
 	if (currprefs.gfx_auto_crop)
 	{
-		dx -= float(crop_rect.x);
-		dy -= float(crop_rect.y);
+		dx -= static_cast<float>(crop_rect.x);
+		dy -= static_cast<float>(crop_rect.y);
 	}
 
 	*dxp = dx;
@@ -740,8 +796,8 @@ static void addmode(struct MultiDisplay* md, SDL_DisplayMode* dm, const int rawm
 
 static int resolution_compare(const void* a, const void* b)
 {
-	auto* ma = (struct PicassoResolution*)a;
-	auto* mb = (struct PicassoResolution*)b;
+	const PicassoResolution* ma = (struct PicassoResolution*)a;
+	const PicassoResolution* mb = (struct PicassoResolution*)b;
 	if (ma->res.width < mb->res.width)
 		return -1;
 	if (ma->res.width > mb->res.width)
@@ -812,9 +868,8 @@ static void modesList(struct MultiDisplay* md)
 
 void reenumeratemonitors(void)
 {
-	for (auto& Display : Displays)
-	{
-		struct MultiDisplay* md = &Display;
+	for (int i = 0; i < MAX_DISPLAYS; i++) {
+		struct MultiDisplay* md = &Displays[i];
 		memcpy(&md->workrect, &md->rect, sizeof(SDL_Rect));
 	}
 	enumeratedisplays();
@@ -999,7 +1054,26 @@ int gfx_adjust_screenmode(MultiDisplay *md, int *pwidth, int *pheight, int *ppix
 
 bool render_screen(int monid, int mode, bool immediate)
 {
-	return true;
+	struct AmigaMonitor* mon = &AMonitors[monid];
+	const struct amigadisplay* ad = &adisplays[monid];
+	int cnt;
+
+	mon->render_ok = false;
+	if (ad->picasso_on || monitor_off) {
+		return mon->render_ok;
+	}
+	cnt = 0;
+	while (mon->wait_render) {
+		sleep_millis(1);
+		cnt++;
+		if (cnt > 500) {
+			return mon->render_ok;
+		}
+	}
+	gfx_lock();
+	mon->render_ok = SDL2_renderframe(monid, mode, immediate);
+	gfx_unlock();
+	return mon->render_ok;
 }
 
 bool show_screen_maybe(const int monid, const bool show)
@@ -1035,16 +1109,28 @@ void show_screen(const int monid, int mode)
 {
 	AmigaMonitor* mon = &AMonitors[monid];
 	const amigadisplay* ad = &adisplays[monid];
-	const bool rtg = ad->picasso_on;
+	struct apmode* ap = ad->picasso_on ? &currprefs.gfx_apmode[1] : &currprefs.gfx_apmode[0];
 
-	const auto start = read_processor_time();
-
-	// RTG status line is handled in P96 code, this is for native modes only
-	if ((currprefs.leds_on_screen & STATUSLINE_CHIPSET) && !rtg)
-	{
-		update_leds(monid);
+	gfx_lock();
+	//if (mode == 2 || mode == 3 || mode == 4) {
+	//	if ((mon->currentmode.flags & DM_D3D) && D3D_showframe_special && ap->gfx_strobo) {
+	//		if (mode == 4) {
+	//			// erase + render
+	//			D3D_showframe_special(0, 2);
+	//			D3D_showframe_special(0, 1);
+	//		}
+	//		else {
+	//			// erase or render
+	//			D3D_showframe_special(0, mode == 3 ? 2 : 1);
+	//		}
+	//	}
+	//	gfx_unlock();
+	//	return;
+	//}
+	if (mode >= 0 && !mon->render_ok) {
+		gfx_unlock();
+		return;
 	}
-
 #ifdef USE_OPENGL
 	auto time = SDL_GetTicks();
 	glViewport(0, 0, renderQuad.w, renderQuad.h);
@@ -1055,21 +1141,10 @@ void show_screen(const int monid, int mode)
 
 	SDL_GL_SwapWindow(mon->amiga_window);
 #else
-	if (amiga_texture && amiga_surface)
-	{
-		SDL_RenderClear(mon->amiga_renderer);
-		SDL_UpdateTexture(amiga_texture, nullptr, amiga_surface->pixels, amiga_surface->pitch);
-		SDL_RenderCopyEx(mon->amiga_renderer, amiga_texture, &crop_rect, &renderQuad, amiberry_options.rotation_angle, nullptr, SDL_FLIP_NONE);
-		if (vkbd_allowed(monid))
-		{
-			vkbd_redraw();
-		}
-		SDL_RenderPresent(mon->amiga_renderer);
-	}
+	SDL2_showframe(monid);
 #endif // USE_OPENGL
-
-	last_synctime = read_processor_time();
-	idletime += last_synctime - start;
+	gfx_unlock();
+	mon->render_ok = false;
 }
 
 int lockscr(struct vidbuffer* vb, bool fullupdate, bool first, bool skip)
@@ -1131,8 +1206,11 @@ void gfx_unlock_picasso(const int monid, const bool dorender)
 	mon->rtg_locked = false;
 	if (dorender)
 	{
-		render_screen(0, 0, true);
-		show_screen(0, 0);
+		if (SDL2_renderframe(monid, true, false)) {
+			//gfx_unlock();
+			mon->render_ok = true;
+			show_screen_maybe(monid, true);
+		}
 	}
 	//gfx_unlock();
 }
@@ -2493,7 +2571,7 @@ float target_getcurrentvblankrate(const int monid)
 	struct AmigaMonitor* mon = &AMonitors[monid];
 	float vb;
 	if (currprefs.gfx_variable_sync)
-		return (float)mon->currentmode.freq;
+		return static_cast<float>(mon->currentmode.freq);
 	if (get_display_vblank_params(-1, nullptr, nullptr, &vb, nullptr)) {
 		return vb;
 	}
@@ -2503,7 +2581,6 @@ float target_getcurrentvblankrate(const int monid)
 
 static void allocsoftbuffer(const int monid, const TCHAR* name, struct vidbuffer* buf, int flags, const int width, const int height, const int depth)
 {
-	/* Initialize structure for Amiga video modes */
 	buf->monitor_id = monid;
 	buf->pixbytes = amiga_surface->format->BytesPerPixel;
 	buf->width_allocated = (width + 7) & ~7;
@@ -2590,13 +2667,13 @@ bool target_graphics_buffer_update(const int monid, const bool force)
 		if (mon->amiga_renderer) {
 			if (amiberry_options.rotation_angle == 0 || amiberry_options.rotation_angle == 180) {
 				SDL_RenderSetLogicalSize(mon->amiga_renderer, w, h);
-				renderQuad = {dx, dy, w, h};
+				render_quad = {dx, dy, w, h};
 				crop_rect = {dx, dy, w, h};
 			}
 			else
 			{
 				SDL_RenderSetLogicalSize(mon->amiga_renderer, h, w);
-				renderQuad = { -(w - h) / 2, (w - h) / 2, w, h };
+				render_quad = { -(w - h) / 2, (w - h) / 2, w, h };
 				crop_rect = { -(w - h) / 2, (w - h) / 2, w, h };
 			}
 			set_scaling_option(&currprefs, w, h);
@@ -2652,12 +2729,12 @@ bool target_graphics_buffer_update(const int monid, const bool force)
 			if (amiberry_options.rotation_angle == 0 || amiberry_options.rotation_angle == 180) {
 				SDL_RenderSetLogicalSize(mon->amiga_renderer, scaled_width, scaled_height);
 				if (!currprefs.gfx_auto_crop && !currprefs.gfx_manual_crop) {
-					renderQuad = {dx, dy, scaled_width, scaled_height};
+					render_quad = {dx, dy, scaled_width, scaled_height};
 					crop_rect = {dx, dy, w, h};
 				}
 				else if (currprefs.gfx_manual_crop)
 				{
-					renderQuad = { dx, dy, scaled_width, scaled_height };
+					render_quad = { dx, dy, scaled_width, scaled_height };
 					crop_rect = { currprefs.gfx_horizontal_offset, currprefs.gfx_vertical_offset, currprefs.gfx_manual_crop_width, currprefs.gfx_manual_crop_height };
 				}
 			}
@@ -2665,7 +2742,7 @@ bool target_graphics_buffer_update(const int monid, const bool force)
 			{
 				SDL_RenderSetLogicalSize(mon->amiga_renderer, scaled_height, scaled_width);
 				if (!currprefs.gfx_auto_crop && !currprefs.gfx_manual_crop) {
-					renderQuad = { -(scaled_width - scaled_height) / 2, (scaled_width - scaled_height) / 2, scaled_width, scaled_height };
+					render_quad = { -(scaled_width - scaled_height) / 2, (scaled_width - scaled_height) / 2, scaled_width, scaled_height };
 					crop_rect = { -(w - h) / 2, (w - h) / 2, w, h };
 				}
 			}
@@ -2684,7 +2761,7 @@ bool target_graphics_buffer_update(const int monid, const bool force)
 void updatedisplayarea(const int monid)
 {
 	set_custom_limits(-1, -1, -1, -1);
-	show_screen(monid, 0);
+	SDL2_refresh(monid);
 }
 
 void updatewinfsmode(const int monid, struct uae_prefs* p)
@@ -2980,13 +3057,13 @@ void auto_crop_image()
 		if (amiberry_options.rotation_angle == 0 || amiberry_options.rotation_angle == 180)
 		{
 			SDL_RenderSetLogicalSize(mon->amiga_renderer, width, height);
-			renderQuad = { dx, dy, width, height };
+			render_quad = { dx, dy, width, height };
 			crop_rect = { cx, cy, cw, ch };
 		}
 		else
 		{
 			SDL_RenderSetLogicalSize(mon->amiga_renderer, height, width);
-			renderQuad = { -(width - height) / 2, (width - height) / 2, width, height };
+			render_quad = { -(width - height) / 2, (width - height) / 2, width, height };
 		}
 
 		if (vkbd_allowed(0))
