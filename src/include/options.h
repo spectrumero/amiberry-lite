@@ -20,7 +20,7 @@
 
 #define UAEMAJOR 5
 #define UAEMINOR 8
-#define UAESUBREV 5
+#define UAESUBREV 6
 
 #define MAX_AMIGADISPLAYS 1
 
