@@ -549,8 +549,8 @@ void desktop_coords(const int monid, int* dw, int* dh, int* ax, int* ay, int* aw
 	const struct AmigaMonitor* mon = &AMonitors[monid];
 	const struct MultiDisplay* md = getdisplay(&currprefs, monid);
 
-	*dw = md->rect.w - md->rect.x;
-	*dh = md->rect.h - md->rect.y;
+	*dw = md->rect.w;
+	*dh = md->rect.h;
 	*ax = mon->amigawin_rect.x;
 	*ay = mon->amigawin_rect.y;
 	*aw = mon->amigawin_rect.w;

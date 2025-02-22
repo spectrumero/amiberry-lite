@@ -448,8 +448,8 @@ int sleep_millis(const int ms)
 
 static void setcursor(AmigaMonitor* mon, int oldx, int oldy)
 {
-	const int dx = (mon->amigawinclip_rect.x - mon->amigawin_rect.x) + ((mon->amigawinclip_rect.x + mon->amigawinclip_rect.w) - mon->amigawinclip_rect.x) / 2;
-	const int dy = (mon->amigawinclip_rect.y - mon->amigawin_rect.y) + ((mon->amigawinclip_rect.y + mon->amigawinclip_rect.h) - mon->amigawinclip_rect.y) / 2;
+	const int dx = (mon->amigawinclip_rect.x - mon->amigawin_rect.x) + (mon->amigawinclip_rect.w) / 2;
+	const int dy = (mon->amigawinclip_rect.y - mon->amigawin_rect.y) + (mon->amigawinclip_rect.h) / 2;
 	mon->mouseposx = oldx - dx;
 	mon->mouseposy = oldy - dy;
 
@@ -471,14 +471,14 @@ static void setcursor(AmigaMonitor* mon, int oldx, int oldy)
 	}
 	mon->mouseposx = mon->mouseposy = 0;
 	if (oldx < 0 || oldy < 0 || oldx > mon->amigawin_rect.w || oldy > mon->amigawin_rect.h) {
-		write_log(_T("Mouse out of range: mon=%d %dx%d (%dx%d %dx%d)\n"), mon->monitor_id, oldx, oldy,
+		write_log("Mouse out of range: mon=%d %dx%d (%dx%d %dx%d)\n", mon->monitor_id, oldx, oldy,
 			mon->amigawin_rect.x, mon->amigawin_rect.y, mon->amigawin_rect.w, mon->amigawin_rect.h);
 		return;
 	}
 	const int cx = mon->amigawinclip_rect.w / 2 + mon->amigawin_rect.x + (mon->amigawinclip_rect.x - mon->amigawin_rect.x);
 	const int cy = mon->amigawinclip_rect.h / 2 + mon->amigawin_rect.y + (mon->amigawinclip_rect.y - mon->amigawin_rect.y);
 
-	SDL_WarpMouseGlobal(cx, cy);
+	SDL_WarpMouseInWindow(nullptr, cx, cy);
 }
 
 static int mon_cursorclipped;
@@ -960,11 +960,11 @@ void setmouseactivexy(const int monid, int x, int y, const int dir)
 	if (dir & 1)
 		x = mon->amigawin_rect.x - diff;
 	if (dir & 2)
-		x = mon->amigawin_rect.x + mon->amigawin_rect.w + diff;
+		x = mon->amigawin_rect.w + diff;
 	if (dir & 4)
 		y = mon->amigawin_rect.y - diff;
 	if (dir & 8)
-		y = mon->amigawin_rect.y + mon->amigawin_rect.h + diff;
+		y = mon->amigawin_rect.h + diff;
 	if (!dir) {
 		x += mon->amigawin_rect.w / 2;
 		y += mon->amigawin_rect.h / 2;
@@ -972,7 +972,7 @@ void setmouseactivexy(const int monid, int x, int y, const int dir)
 
 	if (mouseactive) {
 		disablecapture();
-		SDL_WarpMouseGlobal(x, y);
+		SDL_WarpMouseInWindow(mon->amiga_window, x, y);
 		if (dir) {
 			recapture = 1;
 		}
