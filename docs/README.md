@@ -4,7 +4,7 @@
 
 <a rel="me" href="https://mastodon.social/@midwan">Follow me on Mastodon!</a>
 
-[![C/C++ CI](https://github.com/BlitterStudio/amiberry/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/BlitterStudio/amiberry/actions/workflows/c-cpp.yml)
+[![C/C++ CI](https://github.com/BlitterStudio/amiberry-lite/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/BlitterStudio/amiberry/actions/workflows/c-cpp.yml)
 
 [![Discord](https://img.shields.io/badge/My-Discord-%235865F2.svg)](https://discord.gg/wWndKTGpGV)
 
@@ -21,7 +21,7 @@ There are currently two Amiberry editions available: **Amiberry and Amiberry-Lit
 
 ### Linux
 
-Amiberry-Lite is available as a DEB package for ARM32 and ARM64 (aarch64) Linux platforms. You can download the latest version from the [Releases](https://github.com/BlitterStudio/amiberry/releases) area.
+Amiberry-Lite is available as a DEB package for ARM32 and ARM64 (aarch64) Linux platforms. You can download the latest version from the [Releases](https://github.com/BlitterStudio/amiberry-lite/releases) area.
 Users of macOS and x86_64 Linux are better off using the full [Amiberry](https://github.com/BlitterStudio/amiberry) version, instead.
 
 For DEB packages:
