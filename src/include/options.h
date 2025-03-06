@@ -20,7 +20,7 @@
 
 #define UAEMAJOR 5
 #define UAEMINOR 8
-#define UAESUBREV 6
+#define UAESUBREV 7
 
 #define MAX_AMIGADISPLAYS 1
 
@@ -1337,6 +1337,7 @@ struct amiberry_options
 	int default_stereo_separation = 7;
 	int default_sound_buffer = 8192;
 	bool default_sound_pull = true;
+	int default_sound_frequency = 44100;
 	int default_joystick_deadzone = 33;
 	bool default_retroarch_quit = true;
 	bool default_retroarch_menu = true;
