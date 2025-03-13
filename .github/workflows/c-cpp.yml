@@ -7,6 +7,38 @@ on:
 
 jobs:
 
+  build-debian-bookworm-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the build process with Docker
+        uses: addnab/docker-run-action@v3
+        with:
+          image: midwan/amiberry-debian-x86_64:bookworm
+          options: -v ${{ github.workspace }}:/build
+          run: |
+            cmake -B build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build -j4
+            cpack -G DEB --config build/CPackConfig.cmake
+
+      - name: Upload artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: amiberry-lite-debian-bookworm-amd64
+          path: amiberry-lite_*.deb
+
+      - name: ZIP package for release
+        if: github.ref_type == 'tag'
+        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bookworm-amd64.zip amiberry-lite_*.deb
+
+      - name: Upload artifact for release
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: amiberry-lite-debian-bookworm-amd64
+          path: amiberry-lite-*.zip
+
   build-debian-bookworm-arm64:
     runs-on: ubuntu-latest
     steps:
