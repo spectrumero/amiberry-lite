@@ -774,7 +774,7 @@ bool handle_keydown(SDL_Event& event, bool& dialog_finished, bool& nav_left, boo
 		for (auto z = 0; z < times; ++z) {
 			PushFakeKey(key_code);
 		}
-		};
+	};
 
 	switch (key)
 	{
