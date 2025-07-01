@@ -79,7 +79,7 @@ jobs:
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.image }}
+          name: ${{ matrix.artifact_name }}
           path: "amiberry-lite_*.deb"
 
       - name: ZIP package for release
