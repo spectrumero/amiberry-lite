@@ -22,6 +22,7 @@ option(USE_LIBENET "Use LibENET" ON)
 option(USE_PORTMIDI "Use PortMidi" ON)
 # Use LibMPEG2 for MPEG2 decoding (CD32 FMV)?
 option(USE_LIBMPEG2 "Use LibMPEG2" ON)
+option(USE_ZSTD 	     "Use Zstandard for CHD compressed disk images" ON)
 
 ## Determine proper semantic version
 set(VERSION_MAJOR "5")
