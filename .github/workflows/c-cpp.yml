@@ -7,47 +7,69 @@ on:
 
 jobs:
 
-  build-debian-bookworm-amd64:
+  build-debian-amd64:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: bullseye
+            image: midwan/amiberry-debian-x86_64:bullseye
+            artifact_name: amiberry-lite-debian-bullseye-amd64
+            release_name: debian-bullseye-amd64
+          - name: bookworm
+            image: midwan/amiberry-debian-x86_64:bookworm
+            artifact_name: amiberry-lite-debian-bookworm-amd64
+            release_name: debian-bookworm-amd64
     steps:
       - uses: actions/checkout@v4
 
       - name: Run the build process with Docker
         uses: addnab/docker-run-action@v3
         with:
-          image: midwan/amiberry-debian-x86_64:bookworm
+          image: ${{ matrix.image }}
           options: -v ${{ github.workspace }}:/build
           run: |
             cmake -B build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build -j4
             cpack -G DEB --config build/CPackConfig.cmake
 
       - name: Upload artifact
-        if: github.ref_type != 'tag'
+        if: always() && github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: amiberry-lite-debian-bookworm-amd64
-          path: amiberry-lite_*.deb
+          name: ${{ matrix.artifact_name }}
+          path: "amiberry-lite_*.deb"
 
       - name: ZIP package for release
         if: github.ref_type == 'tag'
-        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bookworm-amd64.zip amiberry-lite_*.deb
+        run: zip -r "amiberry-lite-${{ github.ref_name }}-${{ matrix.release_name }}.zip" amiberry-lite_*.deb
 
       - name: Upload artifact for release
         if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: amiberry-lite-debian-bookworm-amd64
+          name: ${{ matrix.artifact_name }}
           path: amiberry-lite-*.zip
 
-  build-debian-bookworm-arm64:
+  build-debian-arm64:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: bullseye
+            image: midwan/amiberry-debian-aarch64:bullseye
+            artifact_name: amiberry-lite-debian-bullseye-arm64
+            release_name: debian-bullseye-arm64
+          - name: bookworm
+            image: midwan/amiberry-debian-aarch64:bookworm
+            artifact_name: amiberry-lite-debian-bookworm-arm64
+            release_name: debian-bookworm-arm64
     steps:
       - uses: actions/checkout@v4
 
       - name: Run the build process with Docker
         uses: addnab/docker-run-action@v3
         with:
-          image: midwan/amiberry-debian-aarch64:bookworm
+          image: ${{ matrix.image }}
           options: -v ${{ github.workspace }}:/build
           run: |
             cmake -DCMAKE_TOOLCHAIN_FILE=cmake/Toolchain-aarch64-linux-gnu.cmake -B build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build -j4
@@ -57,118 +79,65 @@ jobs:
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: amiberry-lite-debian-bookworm-arm64
-          path: amiberry-lite_*.deb
+          name: ${{ matrix.image }}
+          path: "amiberry-lite_*.deb"
 
       - name: ZIP package for release
         if: github.ref_type == 'tag'
-        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bookworm-arm64.zip amiberry-lite_*.deb
+        run: zip -r amiberry-lite-${{ github.ref_name }}-${{ matrix.release_name }}.zip amiberry-lite_*.deb
 
       - name: Upload artifact for release
-        if: github.ref_type == 'tag'
+        if: always() && github.ref_type == 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: amiberry-lite-debian-bookworm-arm64
-          path: amiberry-lite-*.zip
+          name: ${{ matrix.artifact_name }}
+          path: "amiberry-lite-*.zip"
 
-  build-debian-bookworm-armhf:
+  build-debian-armhf:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: bullseye
+            image: midwan/amiberry-debian-armhf:bullseye
+            artifact_name: amiberry-lite-debian-bullseye-armhf
+            release_name: debian-bullseye-armhf
+          - name: bookworm
+            image: midwan/amiberry-debian-armhf:bookworm
+            artifact_name: amiberry-lite-debian-bookworm-armhf
+            release_name: debian-bookworm-armhf
     steps:
       - uses: actions/checkout@v4
 
       - name: Run the build process with Docker
         uses: addnab/docker-run-action@v3
         with:
-          image: midwan/amiberry-debian-armhf:bookworm
+          image: ${{ matrix.image }}
           options: -v ${{ github.workspace }}:/build
           run: |
             cmake -DCMAKE_TOOLCHAIN_FILE=cmake/Toolchain-arm-linux-gnueabihf.cmake -B build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build -j4
             cpack -G DEB --config build/CPackConfig.cmake
 
       - name: Upload artifact
-        if: github.ref_type != 'tag'
+        if: always() && github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: amiberry-lite-debian-bookworm-armhf
-          path: amiberry-lite_*.deb
+          name: ${{ matrix.artifact_name }}
+          path: "amiberry-lite_*.deb"
 
       - name: ZIP package for release
         if: github.ref_type == 'tag'
-        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bookworm-armhf.zip amiberry-lite_*.deb
+        run: zip -r amiberry-lite-${{ github.ref_name }}-${{ matrix.release_name }}.zip amiberry-lite_*.deb
 
       - name: Upload artifact for release
         if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: amiberry-lite-debian-bookworm-armhf
-          path: amiberry-lite-*.zip
-
-  build-debian-bullseye-arm64:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run the build process with Docker
-        uses: addnab/docker-run-action@v3
-        with:
-          image: midwan/amiberry-debian-aarch64:bullseye
-          options: -v ${{ github.workspace }}:/build
-          run: |
-            cmake -DCMAKE_TOOLCHAIN_FILE=cmake/Toolchain-aarch64-linux-gnu.cmake -B build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build -j4
-            cpack -G DEB --config build/CPackConfig.cmake
-
-      - name: Upload artifact
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiberry-lite-debian-bullseye-arm64
-          path: amiberry-lite_*.deb
-
-      - name: ZIP package for release
-        if: github.ref_type == 'tag'
-        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bullseye-arm64.zip amiberry-lite_*.deb
-
-      - name: Upload artifact for release
-        if: github.ref_type == 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiberry-lite-debian-bullseye-arm64
-          path: amiberry-lite-*.zip
-
-  build-debian-bullseye-armhf:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run the build process with Docker
-        uses: addnab/docker-run-action@v3
-        with:
-          image: midwan/amiberry-debian-armhf:bullseye
-          options: -v ${{ github.workspace }}:/build
-          run: |
-            cmake -DCMAKE_TOOLCHAIN_FILE=cmake/Toolchain-arm-linux-gnueabihf.cmake -B build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build -j4
-            cpack -G DEB --config build/CPackConfig.cmake
-
-      - name: Upload artifact
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiberry-lite-debian-bullseye-armhf
-          path: amiberry-lite_*.deb
-
-      - name: ZIP package for release
-        if: github.ref_type == 'tag'
-        run: zip -r amiberry-lite-${{ github.ref_name }}-debian-bullseye-armhf.zip amiberry-lite_*.deb
-
-      - name: Upload artifact for release
-        if: github.ref_type == 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiberry-lite-debian-bullseye-armhf
-          path: amiberry-lite-*.zip
+          name: ${{ matrix.artifact_name }}
+          path: "amiberry-lite-*.zip"
 
   create-release:
-    needs: [build-debian-bookworm-arm64, build-debian-bookworm-armhf, build-debian-bullseye-arm64, build-debian-bullseye-armhf]
+    needs: [build-debian-amd64, build-debian-armhf, build-debian-arm64]
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     steps:
@@ -199,10 +168,10 @@ jobs:
           omitBodyDuringUpdate: true
           body: ${{ steps.changelog.outputs.changes }}
           artifacts: |
-            artifacts/amiberry-*.*
+            artifacts/amiberry-*.zip
 
   create-prerelease:
-    needs: [build-debian-bookworm-arm64, build-debian-bookworm-armhf, build-debian-bullseye-arm64, build-debian-bullseye-armhf]
+    needs: [build-debian-amd64, build-debian-armhf, build-debian-arm64]
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'preview-v')
     steps:
@@ -234,4 +203,4 @@ jobs:
           omitBodyDuringUpdate: true
           body: ${{ steps.changelog.outputs.changes }}
           artifacts: |
-            artifacts/amiberry-*.*
+            artifacts/amiberry-*.zip
